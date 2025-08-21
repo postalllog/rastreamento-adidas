@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3000",
     "lint": "next lint",
     "server": "node server.mjs",
-    "export": "next build && next export"
+    "start:all":"concurrently \"npm run server\" \"npm start\"",
+    "export": "next build",
+    "deploy": "npm run export"
   },
   "dependencies": {
     "express": "^5.1.0",

@@ -1,21 +1,23 @@
-FROM node:18-alpine
-
+# Etapa 1 - Build
+FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Copiar package.json
 COPY rastreamento-adidas/package*.json ./
+RUN npm ci
 
-# Instalar dependências
-RUN npm ci --only=production
-
-# Copiar código
 COPY rastreamento-adidas/ ./
-
-# Build da aplicação
 RUN npm run build
 
-# Expor portas
-EXPOSE 3000 3001
+# Etapa 2 - Runtime
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
 
-# Comando para iniciar ambos os serviços
-CMD ["sh", "-c", "npm run server & npm start"]
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/server.js ./server.js
+
+EXPOSE 3000 3001
+CMD ["npm", "run", "start:all"]

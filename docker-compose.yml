@@ -1,12 +1,17 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  app:
-    build: .
+  web:
+    build: ./rastreamento-adidas
     ports:
       - "3000:3000"
       - "3001:3001"
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-    restart: unless-stopped
+    depends_on:
+      - osrm
+
+  osrm:
+  build:
+    context: .
+    dockerfile: Dockerfile.osrm
+    ports:
+      - "5000:5000"

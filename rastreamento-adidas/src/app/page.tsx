@@ -15,13 +15,9 @@ export default function HomePage() {
   const [center, setCenter] = useState<Location>({ lat: -23.55, lng: -46.63 });
   const [origem, setOrigem] = useState<Location | null>(null);
   const [destino, setDestino] = useState<Location | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     const socket: Socket = io(process.env.NODE_ENV === 'production' ? 'https://seudominio.com:3001' : 'http://localhost:3001');
-
-    socket.on("connect", () => setIsConnected(true));
-    socket.on("disconnect", () => setIsConnected(false));
 
     socket.on("posicao-atual", async (data) => {
       if (data.origem) setOrigem({ lat: data.origem[0], lng: data.origem[1] });
@@ -53,7 +49,7 @@ export default function HomePage() {
     });
 
     return () => {socket.disconnect();}
-  }, []);
+  }, [destino]);
 
   return (
     <div style={{ height: "100vh" }}>
