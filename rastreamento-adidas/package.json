@@ -2,16 +2,16 @@
   "name": "rastreamento-adidas",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "concurrently \"node server.mjs\" \"next start -p ${PORT:-80}\"",
+    "start": "next start",
     "lint": "next lint",
     "server": "node server.mjs",
-    "start:all": "node server.mjs & npm start",
-    "dev:all": "node server.mjs & npm run dev",
-    "export": "next build",
-    "deploy": "npm run export"
+    "start:all": "concurrently \"node server.mjs\" \"npm start\"",
+    "dev:all": "concurrently \"node server.mjs\" \"npm run dev\"",
+    "export": "next export",
+    "deploy": "npm run build"
   },
   "dependencies": {
     "concurrently": "^8.2.2",
