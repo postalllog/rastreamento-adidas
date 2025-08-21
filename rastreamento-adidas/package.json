@@ -9,6 +9,7 @@
     "lint": "next lint",
     "server": "node server.mjs",
     "start:all": "node server.mjs & npm start",
+    "dev:all": "node server.mjs & npm run dev",
     "export": "next build",
     "deploy": "npm run export"
   },
