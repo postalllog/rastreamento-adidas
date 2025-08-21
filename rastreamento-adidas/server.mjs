@@ -61,6 +61,6 @@
 
   const PORT = 3001;
   console.log(`WebSocket server starting on port ${PORT}`);
-  server.listen(PORT, () => {
+  server.listen(PORT,'0.0.0.0', () => {
     console.log(`WebSocket server running on port ${PORT}`);
   });
