@@ -11,11 +11,11 @@ RUN npm ci
 # Copiar código fonte
 COPY . .
 
-# Build da aplicação Next.js
-RUN npm run build
-
 # Dar permissão de execução ao script
 RUN chmod +x start.sh
+
+# Build da aplicação Next.js
+RUN npm run build
 
 # Expor portas
 EXPOSE 80 3001
