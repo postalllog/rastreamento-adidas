@@ -43,6 +43,13 @@ const posicaoAtualIcon = new Icon({
 
 export function TrackingMap({ positions, center, origem, destino }: TrackingMapProps) {
   const [rota, setRota] = useState<Location[]>([]);
+  const [mapKey, setMapKey] = useState(0);
+
+  useEffect(() => {
+    // Força recriação do mapa se houver erro
+    const timer = setTimeout(() => setMapKey(prev => prev + 1), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     console.log('TrackingMap - Origem:', origem, 'Destino:', destino);
@@ -82,6 +89,7 @@ export function TrackingMap({ positions, center, origem, destino }: TrackingMapP
 
   return (
     <MapContainer
+      key={mapKey}
       center={[center.lat, center.lng] as LatLngExpression}
       zoom={13}
       style={{ height: '100%', width: '100%' }}
