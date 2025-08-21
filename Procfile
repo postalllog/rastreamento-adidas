@@ -1,1 +1,1 @@
-web: cd rastreamento-adidas && npm install && npm run dev:all
+web: npm start

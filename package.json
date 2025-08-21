@@ -1,5 +1,10 @@
 {
-  "dependencies": {
-    "concurrently": "^9.2.0"
+  "name": "rastreamento-adidas-root",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "cd rastreamento-adidas && npm install && node server.mjs & npm run dev"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
