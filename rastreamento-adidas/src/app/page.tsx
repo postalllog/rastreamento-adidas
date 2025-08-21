@@ -17,9 +17,27 @@ export default function HomePage() {
   const [destino, setDestino] = useState<Location | null>(null);
 
   useEffect(() => {
-    const socket: Socket = io(process.env.NODE_ENV === 'production' ? 'https://api-ia-postall-rastreamento.xviskr.easypanel.host:3001' : 'http://localhost:3001');
+    const socketUrl = process.env.NODE_ENV === 'production' ? 'https://api-ia-postall-rastreamento.xviskr.easypanel.host:3001' : 'http://localhost:3001';
+    console.log('🔗 Conectando ao WebSocket:', socketUrl);
+    
+    const socket: Socket = io(socketUrl);
+
+    socket.on('connect', () => {
+      console.log('✅ WebSocket conectado! ID:', socket.id);
+      // Identificar como cliente web
+      socket.emit('client-type', 'web');
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('❌ WebSocket desconectado');
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('⚠️ Erro de conexão WebSocket:', error);
+    });
 
     socket.on("posicao-atual", async (data) => {
+      console.log('📍 Dados recebidos no frontend:', data);
       if (data.origem) setOrigem({ lat: data.origem[0], lng: data.origem[1] });
       
       if (data.destino) {
@@ -49,7 +67,7 @@ export default function HomePage() {
     });
 
     return () => {socket.disconnect();}
-  }, [destino]);
+  }, []);
 
   return (
     <div style={{ height: "100vh" }}>
