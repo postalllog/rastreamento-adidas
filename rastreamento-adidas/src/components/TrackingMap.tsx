@@ -43,8 +43,7 @@ const posicaoAtualIcon = new Icon({
 
 export function TrackingMap({ positions, center, origem, destino }: TrackingMapProps) {
   const [rota, setRota] = useState<Location[]>([]);
-  const mapRef = useRef<any>(null);
-  const [isMapReady, setIsMapReady] = useState(false);
+  const [mapId] = useState(() => `map-${Date.now()}-${Math.random()}`);
 
   useEffect(() => {
     console.log('TrackingMap - Origem:', origem, 'Destino:', destino);
@@ -82,22 +81,14 @@ export function TrackingMap({ positions, center, origem, destino }: TrackingMapP
 
 
 
-  if (!isMapReady) {
-    setTimeout(() => setIsMapReady(true), 100);
-    return <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Carregando mapa...</div>;
-  }
-
   return (
-    <MapContainer
-      ref={mapRef}
-      center={[center.lat, center.lng] as LatLngExpression}
-      zoom={13}
-      style={{ height: '100%', width: '100%' }}
-      scrollWheelZoom={true}
-      whenCreated={(map) => {
-        mapRef.current = map;
-      }}
-    >
+    <div key={mapId} style={{ height: '100%', width: '100%' }}>
+      <MapContainer
+        center={[center.lat, center.lng] as LatLngExpression}
+        zoom={13}
+        style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom={true}
+      >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -128,5 +119,6 @@ export function TrackingMap({ positions, center, origem, destino }: TrackingMapP
         />
       )}
     </MapContainer>
+    </div>
   );
 }
