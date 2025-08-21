@@ -17,13 +17,11 @@ export default function HomePage() {
   const [destino, setDestino] = useState<Location | null>(null);
 
   useEffect(() => {
-    const socketUrl = process.env.NODE_ENV === 'production' ? 'https://api-ia-postall-rastreamento.xviskr.easypanel.host:3001' : 'http://localhost:3001';
-    console.log('🔗 Conectando ao WebSocket:', socketUrl);
+    console.log('🔗 Conectando ao WebSocket na mesma porta');
     
-    const socket: Socket = io(socketUrl);
+    const socket: Socket = io(); // Conecta na mesma porta do Next.js
 
-    // Inicializar Socket.IO server
-    fetch('/api/socket').catch(console.error);
+
     
     socket.on('connect', () => {
       console.log('✅ WebSocket conectado! ID:', socket.id);
