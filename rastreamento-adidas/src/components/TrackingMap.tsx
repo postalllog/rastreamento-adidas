@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { MapContainer, Marker, TileLayer, Polyline, useMap } from "react-leaflet";
 import { Icon, LatLngExpression } from "leaflet";
 import 'leaflet/dist/leaflet.css';
@@ -43,13 +43,8 @@ const posicaoAtualIcon = new Icon({
 
 export function TrackingMap({ positions, center, origem, destino }: TrackingMapProps) {
   const [rota, setRota] = useState<Location[]>([]);
-  const [mapKey, setMapKey] = useState(0);
-
-  useEffect(() => {
-    // Força recriação do mapa se houver erro
-    const timer = setTimeout(() => setMapKey(prev => prev + 1), 100);
-    return () => clearTimeout(timer);
-  }, []);
+  const mapRef = useRef<any>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   useEffect(() => {
     console.log('TrackingMap - Origem:', origem, 'Destino:', destino);
@@ -87,13 +82,21 @@ export function TrackingMap({ positions, center, origem, destino }: TrackingMapP
 
 
 
+  if (!isMapReady) {
+    setTimeout(() => setIsMapReady(true), 100);
+    return <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Carregando mapa...</div>;
+  }
+
   return (
     <MapContainer
-      key={mapKey}
+      ref={mapRef}
       center={[center.lat, center.lng] as LatLngExpression}
       zoom={13}
       style={{ height: '100%', width: '100%' }}
       scrollWheelZoom={true}
+      whenCreated={(map) => {
+        mapRef.current = map;
+      }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
