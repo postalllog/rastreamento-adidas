@@ -22,6 +22,9 @@ export default function HomePage() {
     
     const socket: Socket = io(socketUrl);
 
+    // Inicializar Socket.IO server
+    fetch('/api/socket').catch(console.error);
+    
     socket.on('connect', () => {
       console.log('✅ WebSocket conectado! ID:', socket.id);
       // Identificar como cliente web

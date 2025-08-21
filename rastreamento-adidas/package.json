@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:docker": "NODE_ENV=production next build",
-    "start": "concurrently \"node server.mjs\" \"node .next/standalone/server.js -p 3001\"",
+    "start": "next start",
     "lint": "next lint",
     "server": "node server.mjs",
     "start:all": "concurrently \"node server.mjs\" \"npm start\"",
