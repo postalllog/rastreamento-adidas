@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "concurrently \"node server.mjs\" \"next start -p 80\"",
+    "start": "concurrently \"node server.mjs\" \"next start -p ${PORT:-80}\"",
     "lint": "next lint",
     "server": "node server.mjs",
     "start:all": "node server.mjs & npm start",
