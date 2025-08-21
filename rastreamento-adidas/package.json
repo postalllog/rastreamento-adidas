@@ -2,11 +2,11 @@
   "name": "rastreamento-adidas",
   "version": "0.1.0",
   "private": true,
-   "scripts": {
+  "scripts": {
     "dev": "next dev",
     "build": "next build",
     "build:docker": "NODE_ENV=production next build",
-    "start": "node server.mjs & next start -p ${PORT:-80}",
+    "start": "concurrently \"node server.mjs\" \"node .next/standalone/server.js\"",
     "lint": "next lint",
     "server": "node server.mjs",
     "start:all": "concurrently \"node server.mjs\" \"npm start\"",
