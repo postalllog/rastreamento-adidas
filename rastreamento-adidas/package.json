@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "server": "node server.mjs",
-    "start:all":"concurrently \"npm run server\" \"npm start\"",
+    "start:all": "node server.mjs & npm start",
     "export": "next build",
     "deploy": "npm run export"
   },
@@ -25,6 +25,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^8.2.2",
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "tailwindcss": "^4",
