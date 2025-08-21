@@ -17,7 +17,7 @@ export default function HomePage() {
   const [destino, setDestino] = useState<Location | null>(null);
 
   useEffect(() => {
-    const socket: Socket = io(process.env.NODE_ENV === 'production' ? 'https://seudominio.com:3001' : 'http://localhost:3001');
+    const socket: Socket = io(process.env.NODE_ENV === 'production' ? 'https://api-ia-postall-rastreamento.xviskr.easypanel.host:3001' : 'http://localhost:3001');
 
     socket.on("posicao-atual", async (data) => {
       if (data.origem) setOrigem({ lat: data.origem[0], lng: data.origem[1] });
