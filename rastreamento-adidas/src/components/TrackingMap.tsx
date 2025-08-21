@@ -100,7 +100,7 @@ export function TrackingMap({ positions, center, origem, destino }: TrackingMapP
           return;
         }
 
-        const map = L.map(mapRef.current).setView([center.lat, center.lng], 13);
+        const map = L.map(mapRef.current!).setView([center.lat, center.lng], 13);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'

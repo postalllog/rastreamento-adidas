@@ -5,13 +5,12 @@
    "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:docker": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
     "server": "node server.mjs",
     "start:all": "concurrently \"node server.mjs\" \"npm start\"",
-    "dev:all": "concurrently \"node server.mjs\" \"npm run dev\"",
-    "export": "next export",
-    "deploy": "npm run build"
+    "dev:all": "concurrently \"node server.mjs\" \"npm run dev\""
   },
   "dependencies": {
     "concurrently": "^8.2.2",
