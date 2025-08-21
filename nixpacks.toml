@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "npm-9_x"]
+
+[phases.install]
+cmds = ["cd rastreamento-adidas && npm ci"]
+
+[phases.build]
+cmds = ["cd rastreamento-adidas && npm run build"]
+
+[start]
+cmd = "cd rastreamento-adidas && npm run start:all"

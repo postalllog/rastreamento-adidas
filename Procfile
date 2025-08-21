@@ -1,0 +1,1 @@
+web: cd rastreamento-adidas && npm run start:all
