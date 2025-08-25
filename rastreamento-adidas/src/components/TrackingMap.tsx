@@ -231,20 +231,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         
         if (!hasMoved) {
           console.log(`⚠️ ${device.name} não se moveu - todas as posições são iguais`);
-          // Para teste: criar linha da origem ao destino
-          if (device.origem && device.destino) {
-            console.log(`🧪 Criando linha de teste da origem ao destino`);
-            const testLine = L.polyline([
-              [device.origem.lat, device.origem.lng],
-              [device.destino.lat, device.destino.lng]
-            ], {
-              color: device.color,
-              weight: 3,
-              dashArray: '10, 5',
-              opacity: 0.5
-            }).addTo(mapInstanceRef.current!);
-            devicePolylines.push(testLine);
-          }
+          // Não criar trajeto se não houve movimento
         } else {
           const segments = createSegments(device.positions);
           console.log(`📊 Segmentos criados:`, segments.length);
