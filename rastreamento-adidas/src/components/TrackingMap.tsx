@@ -53,6 +53,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
   // Refs para elementos do mapa
   const markersRef = useRef<Map<string, L.Marker[]>>(new Map());
   const polylinesRef = useRef<Map<string, L.Polyline[]>>(new Map());
+  const routePolylinesRef = useRef<Map<string, L.Polyline>>(new Map());
 
   // Controle de estado anterior por aparelho
   const lastStateRef = useRef<Map<string, any>>(new Map());
@@ -80,6 +81,41 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     segments.forEach((seg, i) => console.log(`Segmento ${i + 1}:`, seg.length, 'pontos'));
     
     return segments;
+  }, []);
+
+  // Função para buscar rota OSRM
+  const fetchRoute = useCallback(async (origem: Location, destino: Location, deviceId: string) => {
+    try {
+      console.log(`🗺️ Buscando rota para ${deviceId}`);
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`
+      );
+      const data = await response.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        const coords = data.routes[0].geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => [lat, lng]
+        );
+        
+        // Remover rota anterior se existir
+        const existingRoute = routePolylinesRef.current.get(deviceId);
+        if (existingRoute && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(existingRoute);
+        }
+        
+        // Adicionar nova rota
+        if (mapInstanceRef.current) {
+          const routePolyline = L.polyline(coords, {
+            color: 'blue',
+            weight: 4,
+            opacity: 0.7
+          }).addTo(mapInstanceRef.current);
+          routePolylinesRef.current.set(deviceId, routePolyline);
+          console.log(`✅ Rota criada para ${deviceId}`);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar rota:', error);
+    }
   }, []);
 
   // Inicializar o mapa APENAS UMA VEZ
@@ -161,6 +197,20 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         deviceMarkers.push(destinoMarker);
       }
 
+      // Buscar e desenhar rota planejada (azul) se origem e destino existem
+      if (device.origem && device.destino) {
+        const routeKey = `${device.origem.lat}-${device.origem.lng}-${device.destino.lat}-${device.destino.lng}`;
+        const lastRouteKey = lastStateRef.current.get(device.deviceId)?.routeKey;
+        
+        if (routeKey !== lastRouteKey) {
+          fetchRoute(device.origem, device.destino, device.deviceId);
+          if (!lastStateRef.current.has(device.deviceId)) {
+            lastStateRef.current.set(device.deviceId, {});
+          }
+          lastStateRef.current.get(device.deviceId).routeKey = routeKey;
+        }
+      }
+
       // Marcador de posição atual
       if (device.positions.length > 0) {
         const lastPos = device.positions[device.positions.length - 1];
@@ -173,21 +223,45 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       // Criar segmentos separados para evitar linhas atravessando obstáculos
       if (device.positions.length > 1) {
         console.log(`🛣️ Criando trajeto para ${device.name} com ${device.positions.length} posições`);
-        const segments = createSegments(device.positions);
-        console.log(`📊 Segmentos criados:`, segments.length);
         
-        segments.forEach((segment, index) => {
-          if (segment.length > 1) {
-            console.log(`➡️ Segmento ${index + 1}: ${segment.length} pontos`);
-            const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
+        // Verificar se há movimento real
+        const firstPos = device.positions[0];
+        const lastPos = device.positions[device.positions.length - 1];
+        const hasMoved = firstPos.lat !== lastPos.lat || firstPos.lng !== lastPos.lng;
+        
+        if (!hasMoved) {
+          console.log(`⚠️ ${device.name} não se moveu - todas as posições são iguais`);
+          // Para teste: criar linha da origem ao destino
+          if (device.origem && device.destino) {
+            console.log(`🧪 Criando linha de teste da origem ao destino`);
+            const testLine = L.polyline([
+              [device.origem.lat, device.origem.lng],
+              [device.destino.lat, device.destino.lng]
+            ], {
               color: device.color,
               weight: 3,
-              dashArray: index > 0 ? '10, 5' : '5, 5',
-              opacity: 0.8
+              dashArray: '10, 5',
+              opacity: 0.5
             }).addTo(mapInstanceRef.current!);
-            devicePolylines.push(polyline);
+            devicePolylines.push(testLine);
           }
-        });
+        } else {
+          const segments = createSegments(device.positions);
+          console.log(`📊 Segmentos criados:`, segments.length);
+          
+          segments.forEach((segment, index) => {
+            if (segment.length > 1) {
+              console.log(`➡️ Segmento ${index + 1}: ${segment.length} pontos`);
+              const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
+                color: device.color,
+                weight: 3,
+                dashArray: index > 0 ? '10, 5' : '5, 5',
+                opacity: 0.8
+              }).addTo(mapInstanceRef.current!);
+              devicePolylines.push(polyline);
+            }
+          });
+        }
       } else {
         console.log(`⚠️ ${device.name} tem apenas ${device.positions.length} posições - não criando trajeto`);
       }
