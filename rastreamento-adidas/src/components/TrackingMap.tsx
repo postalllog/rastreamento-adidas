@@ -44,6 +44,8 @@ const icons = {
 };
 
 export function TrackingMap({ devices, center }: TrackingMapProps) {
+  console.log('🗺️ TrackingMap recebeu devices:', devices);
+  
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -57,11 +59,13 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
   // Função para criar segmentos separados baseado em gaps de tempo
   const createSegments = useCallback((positions: Device['positions']) => {
+    console.log('📊 createSegments recebeu:', positions.length, 'posições');
     const segments: Location[][] = [];
     let currentSegment: Location[] = [];
     
     positions.forEach((pos, index) => {
       if (pos.isNewSegment && currentSegment.length > 0) {
+        console.log('✂️ Novo segmento detectado no índice', index);
         segments.push([...currentSegment]);
         currentSegment = [];
       }
@@ -71,6 +75,9 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     if (currentSegment.length > 0) {
       segments.push(currentSegment);
     }
+    
+    console.log('📊 Segmentos criados:', segments.length, 'segmentos');
+    segments.forEach((seg, i) => console.log(`Segmento ${i + 1}:`, seg.length, 'pontos'));
     
     return segments;
   }, []);
@@ -112,6 +119,16 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
   // Renderizar todos os aparelhos
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
+
+    console.log('🗺️ Renderizando aparelhos:', devices.length);
+    devices.forEach(device => {
+      console.log(`📱 Aparelho ${device.name}:`, {
+        positions: device.positions.length,
+        origem: device.origem,
+        destino: device.destino,
+        color: device.color
+      });
+    });
 
     // Limpar elementos anteriores
     markersRef.current.forEach(markers => {
@@ -155,19 +172,24 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
       // Criar segmentos separados para evitar linhas atravessando obstáculos
       if (device.positions.length > 1) {
+        console.log(`🛣️ Criando trajeto para ${device.name} com ${device.positions.length} posições`);
         const segments = createSegments(device.positions);
+        console.log(`📊 Segmentos criados:`, segments.length);
         
         segments.forEach((segment, index) => {
           if (segment.length > 1) {
+            console.log(`➡️ Segmento ${index + 1}: ${segment.length} pontos`);
             const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
               color: device.color,
               weight: 3,
-              dashArray: index > 0 ? '10, 5' : '5, 5', // Segmentos após gap ficam pontilhados
+              dashArray: index > 0 ? '10, 5' : '5, 5',
               opacity: 0.8
             }).addTo(mapInstanceRef.current!);
             devicePolylines.push(polyline);
           }
         });
+      } else {
+        console.log(`⚠️ ${device.name} tem apenas ${device.positions.length} posições - não criando trajeto`);
       }
 
       markersRef.current.set(device.deviceId, deviceMarkers);

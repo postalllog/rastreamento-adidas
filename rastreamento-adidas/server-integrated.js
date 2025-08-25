@@ -120,6 +120,8 @@ app.prepare().then(() => {
         }))
       }
       
+      console.log('📤 Enviando para web:', JSON.stringify(allDevicesData, null, 2));
+      
       webClients.forEach(webClientId => {
         const webSocket = io.sockets.sockets.get(webClientId)
         if (webSocket) {

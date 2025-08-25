@@ -36,8 +36,9 @@ export default function HomePage() {
     });
 
     socket.on("all-devices-data", (data) => {
-      console.log('📍 Dados de todos os aparelhos recebidos:', data);
-      setDevices(data.devices);
+      console.log('📍 Dados de todos os aparelhos recebidos:', JSON.stringify(data, null, 2));
+      console.log('📊 Número de aparelhos:', data.devices?.length || 0);
+      setDevices(data.devices || []);
       
       // Centralizar no último aparelho ativo
       if (data.devices.length > 0) {
