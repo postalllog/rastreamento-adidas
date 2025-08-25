@@ -2,23 +2,20 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copiar package.json e package-lock.json
+# Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar todas as dependências (incluindo dev para build)
-RUN npm ci
+# Instalar dependências
+RUN npm install
 
 # Copiar código fonte
 COPY . .
 
-# Dar permissão de execução ao script
-RUN chmod +x start.sh
-
-# Build da aplicação Next.js
+# Build da aplicação
 RUN npm run build
 
-# Expor portas
-EXPOSE 80 3001
+# Expor porta
+EXPOSE 80
 
-# Comando para iniciar a aplicação
-CMD ["./start.sh"]
+# Iniciar aplicação
+CMD ["npm", "start"]
