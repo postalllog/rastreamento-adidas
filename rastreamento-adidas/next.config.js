@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // output: 'standalone', // Removido para usar servidor integrado
   reactStrictMode: false, // Desabilitar para evitar problemas com Leaflet
   swcMinify: true,
   compiler: {
