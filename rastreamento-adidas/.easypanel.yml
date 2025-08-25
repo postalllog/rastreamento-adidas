@@ -1,0 +1,4 @@
+build:
+  dockerfile: true
+  context: .
+  dockerfile_path: ./Dockerfile

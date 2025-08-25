@@ -2,20 +2,20 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copiar arquivos de dependências
+# Copiar package.json
 COPY package*.json ./
 
 # Instalar dependências
-RUN npm install
+RUN npm ci
 
-# Copiar código fonte
+# Copiar código
 COPY . .
 
-# Build da aplicação
+# Build
 RUN npm run build
 
-# Expor porta
+# Porta
 EXPOSE 80
 
-# Iniciar aplicação
-CMD ["npm", "start"]
+# Start
+CMD ["node", "server-integrated.js"]
