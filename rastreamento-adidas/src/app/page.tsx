@@ -41,7 +41,7 @@ export default function HomePage() {
       
       // Centralizar no último aparelho ativo
       if (data.devices.length > 0) {
-        const lastActiveDevice = data.devices.reduce((latest, device) => 
+        const lastActiveDevice = data.devices.reduce((latest: any, device: any) => 
           device.lastUpdate > latest.lastUpdate ? device : latest
         );
         
