@@ -33,12 +33,12 @@ const icons = {
   }),
   destino: new L.Icon({
     iconUrl: '/marker-icon.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
+    iconSize: [41, 41],
+    iconAnchor: [41, 41],
   }),
   posicaoAtual: new L.Icon({
     iconUrl: '/caminhao-icon.png',
-    iconSize: [24, 24],
+    iconSize: [30, 30],
     iconAnchor: [10, 10],
   })
 };

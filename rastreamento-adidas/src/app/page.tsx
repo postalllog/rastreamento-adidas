@@ -18,8 +18,14 @@ export default function HomePage() {
 
   useEffect(() => {
     // Carregar logs de desconexão do localStorage
-    const savedLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
-    setDisconnectionLogs(savedLogs);
+    try {
+      const savedLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+      setDisconnectionLogs(savedLogs);
+    } catch (error) {
+      console.error('Erro ao carregar logs:', error);
+      localStorage.removeItem('disconnectionLogs');
+      setDisconnectionLogs([]);
+    }
     
     // Limpar logs a cada 20 minutos
     const clearLogsInterval = setInterval(() => {
@@ -95,10 +101,16 @@ export default function HomePage() {
     
     socket.on('device-disconnection-log', (log) => {
       console.log('🔴 Log de desconexão recebido:', log);
-      const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
-      const updatedLogs = [log, ...existingLogs.slice(0, 9)];
-      localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
-      setDisconnectionLogs(updatedLogs);
+      try {
+        const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+        const updatedLogs = [log, ...existingLogs.slice(0, 9)];
+        localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
+        setDisconnectionLogs(updatedLogs);
+      } catch (error) {
+        console.error('Erro ao salvar log:', error);
+        localStorage.removeItem('disconnectionLogs');
+        setDisconnectionLogs([log]);
+      }
     });
 
     return () => {
