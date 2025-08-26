@@ -29,15 +29,13 @@ export default function HomePage() {
     
     socket.on('connect', () => {
       console.log('✅ WebSocket conectado! ID:', socket.id);
-      // Identificar como cliente web
       socket.emit('client-type', 'web');
-      window.location.reload();
     });
     
     socket.on('disconnect', () => {
       console.log('❌ WebSocket desconectado');
       
-      // Salvar última posição antes do reload
+      // Salvar última posição
       if (devices.length > 0) {
         const activeDevice = devices.find(d => d.positions.length > 0);
         if (activeDevice) {
@@ -49,14 +47,21 @@ export default function HomePage() {
             googleMapsLink: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`
           };
           
-          // Salvar no localStorage antes do reload
           const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
           const updatedLogs = [disconnectionLog, ...existingLogs.slice(0, 9)];
           localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
+          setDisconnectionLogs(updatedLogs);
         }
       }
-      
-      setTimeout(() => window.location.reload(), 100);
+    });
+    
+    // Eventos específicos para conexão/desconexão de usuários
+    socket.on('user-connected', () => {
+      window.location.reload();
+    });
+    
+    socket.on('user-disconnected', () => {
+      window.location.reload();
     });
     
     socket.on('connect_error', (error) => {
@@ -88,6 +93,16 @@ export default function HomePage() {
         newMap.set(data.deviceId, data.logs);
         return newMap;
       });
+    });
+    
+    socket.on('device-connected', () => {
+      console.log('📱 Dispositivo conectado');
+      window.location.reload();
+    });
+    
+    socket.on('device-disconnected', () => {
+      console.log('📱 Dispositivo desconectado');
+      window.location.reload();
     });
 
     return () => {socket.disconnect();}
