@@ -146,6 +146,14 @@ app.prepare().then(() => {
       } else if (type === "mobile") {
         mobileClients.add(socket.id)
         console.log('📱 Cliente mobile registrado:', socket.id)
+        
+        // Notificar clientes web sobre nova conexão de dispositivo
+        webClients.forEach(webClientId => {
+          const webSocket = io.sockets.sockets.get(webClientId)
+          if (webSocket) {
+            webSocket.emit('device-connected')
+          }
+        })
       }
     })
     
@@ -243,8 +251,16 @@ app.prepare().then(() => {
       webClients.delete(socket.id)
       mobileClients.delete(socket.id)
       
-      // Se for um cliente mobile, iniciar monitoramento offline
+      // Se for um cliente mobile, notificar clientes web e iniciar monitoramento offline
       if (wasMobileClient) {
+        // Notificar clientes web sobre desconexão de dispositivo
+        webClients.forEach(webClientId => {
+          const webSocket = io.sockets.sockets.get(webClientId)
+          if (webSocket) {
+            webSocket.emit('device-disconnected')
+          }
+        })
+        
         devices.forEach((device, deviceId) => {
           setTimeout(() => {
             // Verificar se ainda está offline após 2 minutos
