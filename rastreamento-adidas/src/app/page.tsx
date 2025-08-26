@@ -32,7 +32,7 @@ export default function HomePage() {
       console.log('🧹 Limpando logs de desconexão');
       localStorage.removeItem('disconnectionLogs');
       setDisconnectionLogs([]);
-    }, 1200000); // 20 minutos
+    }, 2400000); // 40 minutos
     
     console.log('🔗 Conectando ao WebSocket na mesma porta');
     
