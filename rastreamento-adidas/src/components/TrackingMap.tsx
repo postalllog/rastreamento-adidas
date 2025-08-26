@@ -58,6 +58,24 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
   // Controle de estado anterior por aparelho
   const lastStateRef = useRef<Map<string, any>>(new Map());
 
+  // Função para buscar rota entre dois pontos (para gaps)
+  const fetchGapRoute = useCallback(async (start: Location, end: Location): Promise<Location[]> => {
+    try {
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+      );
+      const data = await response.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        return data.routes[0].geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => ({ lat, lng })
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao buscar rota do gap:', error);
+    }
+    return [start, end];
+  }, []);
+
   // Função para criar segmentos com rotas inteligentes
   const createSegments = useCallback(async (positions: Device['positions']) => {
     console.log('📊 createSegments recebeu:', positions.length, 'posições');
@@ -126,24 +144,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     } catch (error) {
       console.error('Erro ao buscar rota:', error);
     }
-  }, []);
-
-  // Função para buscar rota entre dois pontos (para gaps)
-  const fetchGapRoute = useCallback(async (start: Location, end: Location): Promise<Location[]> => {
-    try {
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
-      );
-      const data = await response.json();
-      if (data.routes?.[0]?.geometry?.coordinates) {
-        return data.routes[0].geometry.coordinates.map(
-          ([lng, lat]: [number, number]) => ({ lat, lng })
-        );
-      }
-    } catch (error) {
-      console.error('Erro ao buscar rota do gap:', error);
-    }
-    return [start, end];
   }, []);
 
   // Inicializar o mapa APENAS UMA VEZ
