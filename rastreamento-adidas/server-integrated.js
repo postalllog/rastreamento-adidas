@@ -13,15 +13,12 @@ const handle = app.getRequestHandler()
 const webClients = new Set()
 const mobileClients = new Set()
 
-// Armazenar dados por aparelho
-const devices = new Map() // deviceId -> { positions: [], origem: null, destino: null, lastUpdate: timestamp }
+const devices = new Map() 
 const deviceColors = ['red', 'blue', 'green', 'purple', 'orange', 'yellow', 'pink', 'cyan']
 
-// Sistema de backup com links do Google Maps
-const backupIntervals = new Map() // deviceId -> intervalId
-const backupLogs = new Map() // deviceId -> [{ timestamp, googleMapsLink, isOffline }]
+const backupIntervals = new Map() 
+const backupLogs = new Map() 
 
-// Função para gerar link do Google Maps
 function generateGoogleMapsLink(lat, lng, deviceName) {
   return `https://www.google.com/maps?q=${lat},${lng}&t=m&z=15&marker=${encodeURIComponent(deviceName)}`
 }

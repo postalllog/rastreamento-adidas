@@ -84,129 +84,122 @@ export default function HomePage() {
   const currentLocationData = generateCurrentLocationLink();
 
   return (
-    <div style={{ height: "100vh", display: "flex", position: "relative" }}>
-      <div style={{ flex: 1 }}>
-        <TrackingMap devices={devices} center={center} />
-        
-        {/* Quadro flutuante com link do Google Maps */}
-        {currentLocationData && (
-          <div style={{
-            position: "absolute",
-            top: "20px",
-            right: "20px",
-            backgroundColor: "rgba(255, 255, 255, 0.95)",
-            border: "2px solid #4285f4",
-            borderRadius: "8px",
-            padding: "12px 16px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            zIndex: 1000,
-            minWidth: "200px",
-            cursor: "pointer",
-            transition: "all 0.2s ease"
-          }}
-          onClick={() => window.open(currentLocationData.link, '_blank')}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "scale(1.02)";
-            e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.2)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "scale(1)";
-            e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-          }}
-          >
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "6px"
-            }}>
-              <span style={{ fontSize: "18px" }}>🗺️</span>
-              <span style={{ 
-                fontWeight: "bold", 
-                fontSize: "14px",
-                color: "#1976d2"
-              }}>
-                Ver no Google Maps
-              </span>
-            </div>
-            
-            <div style={{
-              fontSize: "12px",
-              color: "#666",
-              marginBottom: "4px"
-            }}>
-              📱 {currentLocationData.deviceName}
-            </div>
-            
-            <div style={{
-              fontSize: "11px",
-              color: "#888"
-            }}>
-              🕐 {new Date(currentLocationData.timestamp).toLocaleTimeString()}
-            </div>
-            
-            <div style={{
-              fontSize: "10px",
-              color: "#4285f4",
-              marginTop: "6px",
-              textAlign: "center",
-              fontWeight: "500"
-            }}>
-              Clique para abrir
-            </div>
-          </div>
-        )}
-      </div>
+    <div style={{ height: "100vh", position: "relative" }}>
+      <TrackingMap devices={devices} center={center} />
       
-      {/* Painel de Logs de Backup */}
+      {/* Quadro flutuante com link do Google Maps */}
+      {currentLocationData && (
+        <div style={{
+          position: "absolute",
+          top: "20px",
+          right: "20px",
+          backgroundColor: "rgba(255, 255, 255, 0.95)",
+          border: "2px solid #4285f4",
+          borderRadius: "30px",
+          padding: "12px 16px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          minWidth: "200px",
+          cursor: "pointer",
+          transition: "all 0.2s ease",
+          zIndex: 1000
+        }}
+        onClick={() => window.open(currentLocationData.link, '_blank')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.02)";
+          e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.2)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+        }}
+        >
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "6px"
+          }}>
+            <span style={{ fontSize: "18px" }}>🗺️</span>
+            <span style={{ 
+              fontWeight: "bold", 
+              fontSize: "14px",
+              color: "#1976d2"
+            }}>
+              Ver no Google Maps
+            </span>
+          </div>
+          
+          <div style={{
+            fontSize: "12px",
+            color: "#666",
+            marginBottom: "4px"
+          }}>
+            📱 {currentLocationData.deviceName}
+          </div>
+          
+          <div style={{
+            fontSize: "11px",
+            color: "#888"
+          }}>
+            🕐 {new Date(currentLocationData.timestamp).toLocaleTimeString()}
+          </div>
+          
+          <div style={{
+            fontSize: "10px",
+            color: "#4285f4",
+            marginTop: "6px",
+            textAlign: "center",
+            fontWeight: "500"
+          }}>
+            Clique para abrir
+          </div>
+        </div>
+      )}
+      
+      {/* Painel de Logs de Backup - Canto Superior Direito */}
       <div style={{ 
-        width: "350px", 
-        backgroundColor: "#f5f5f5", 
-        padding: "15px", 
+        position: "absolute",
+        top: "20px",
+        right: "30px",
+        width: "300px",
+        maxHeight: "400px",
+        backgroundColor: "rgba(245, 245, 245, 0.95)",
+        color: '#000000', 
+        padding: "15px",
         overflowY: "auto",
-        borderLeft: "1px solid #ddd"
+        borderRadius: '15px',
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        zIndex: 999
       }}>
-        <h3 style={{ margin: "0 0 15px 0", fontSize: "16px" }}>📍 Logs de Backup</h3>
+        <h3 style={{ margin: "0 0 15px 0", fontSize: "16px" }}> Logs</h3>
         
         {Array.from(backupLogs.entries()).map(([deviceId, logs]) => {
           const device = devices.find(d => d.deviceId === deviceId);
           return (
-            <div key={deviceId} style={{ marginBottom: "20px" }}>
+            <div key={deviceId} style={{ marginBottom: "15px" }}>
               <h4 style={{ 
-                margin: "0 0 10px 0", 
-                fontSize: "14px", 
+                margin: "0 0 8px 0", 
+                fontSize: "13px", 
                 color: device?.color || "#333"
               }}>
                 {device?.name || deviceId}
               </h4>
               
-              {logs.slice(-10).reverse().map((log, index) => (
+              {logs.slice(-5).reverse().map((log, index) => (
                 <div key={index} style={{
                   backgroundColor: log.isOffline ? "#ffebee" : "#e8f5e8",
                   border: `1px solid ${log.isOffline ? "#ffcdd2" : "#c8e6c8"}`,
                   borderRadius: "4px",
-                  padding: "8px",
-                  marginBottom: "8px",
-                  fontSize: "12px"
+                  padding: "6px",
+                  marginBottom: "6px",
+                  fontSize: "11px"
                 }}>
-                  <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
-                    {log.isOffline ? "🔴 OFFLINE" : "🟢 ONLINE"} - {new Date(log.timestamp).toLocaleTimeString()}
+                  <div style={{ fontWeight: "bold", marginBottom: "2px" }}>
+                    {log.isOffline ? "🔴" : "🟢"} {new Date(log.timestamp).toLocaleTimeString()}
                   </div>
-                  <div style={{ marginBottom: "4px" }}>
-                    📍 {log.position.lat.toFixed(6)}, {log.position.lng.toFixed(6)}
+                  <div style={{ fontSize: "10px", color: "#666" }}>
+                    📍 {log.position.lat.toFixed(4)}, {log.position.lng.toFixed(4)}
                   </div>
-                  <a 
-                    href={log.googleMapsLink} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ 
-                      color: "#1976d2", 
-                      textDecoration: "none",
-                      fontSize: "11px"
-                    }}
-                  >
-                    🗺️ Ver no Google Maps
-                  </a>
                 </div>
               ))}
             </div>
@@ -217,10 +210,10 @@ export default function HomePage() {
           <div style={{ 
             textAlign: "center", 
             color: "#666", 
-            fontSize: "14px",
-            marginTop: "50px"
+            fontSize: "12px",
+            marginTop: "20px"
           }}>
-            Nenhum log de backup ainda
+            Nenhum log ainda
           </div>
         )}
       </div>
