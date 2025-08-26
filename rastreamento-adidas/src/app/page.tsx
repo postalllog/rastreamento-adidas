@@ -156,22 +156,7 @@ export default function HomePage() {
         </div>
       )}
       
-      {/* Painel de Logs de Backup - Canto Superior Direito */}
-      <div style={{ 
-        position: "absolute",
-        top: "20px",
-        right: "30px",
-        width: "300px",
-        maxHeight: "400px",
-        backgroundColor: "rgba(245, 245, 245, 0.95)",
-        color: '#000000', 
-        padding: "15px",
-        overflowY: "auto",
-        borderRadius: '15px',
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        zIndex: 999
-      }}>
-        <h3 style={{ margin: "0 0 15px 0", fontSize: "16px" }}> Logs</h3>
+    
         
         {Array.from(backupLogs.entries()).map(([deviceId, logs]) => {
           const device = devices.find(d => d.deviceId === deviceId);
@@ -206,17 +191,7 @@ export default function HomePage() {
           );
         })}
         
-        {backupLogs.size === 0 && (
-          <div style={{ 
-            textAlign: "center", 
-            color: "#666", 
-            fontSize: "12px",
-            marginTop: "20px"
-          }}>
-            Nenhum log ainda
-          </div>
-        )}
+       
       </div>
-    </div>
   );
 }
