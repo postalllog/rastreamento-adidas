@@ -13,6 +13,7 @@ const TrackingMap = dynamic(() => import("../components/TrackingMap").then(mod =
 export default function HomePage() {
   const [devices, setDevices] = useState<any[]>([]);
   const [center, setCenter] = useState<Location>({ lat: -23.55, lng: -46.63 });
+  const [backupLogs, setBackupLogs] = useState<Map<string, any[]>>(new Map());
 
   useEffect(() => {
     console.log('🔗 Conectando ao WebSocket na mesma porta');
@@ -53,12 +54,176 @@ export default function HomePage() {
       }
     });
 
+    socket.on("backup-logs", (data) => {
+      console.log('📝 Logs de backup recebidos:', data);
+      setBackupLogs(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.deviceId, data.logs);
+        return newMap;
+      });
+    });
+
     return () => {socket.disconnect();}
   }, []);
 
+  // Gerar link do Google Maps para o aparelho ativo
+  const generateCurrentLocationLink = () => {
+    if (devices.length === 0) return null;
+    
+    const activeDevice = devices.find(d => d.positions.length > 0);
+    if (!activeDevice) return null;
+    
+    const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
+    return {
+      link: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`,
+      deviceName: activeDevice.name,
+      timestamp: lastPosition.timestamp
+    };
+  };
+
+  const currentLocationData = generateCurrentLocationLink();
+
   return (
-    <div style={{ height: "100vh" }}>
-      <TrackingMap devices={devices} center={center} />
+    <div style={{ height: "100vh", display: "flex", position: "relative" }}>
+      <div style={{ flex: 1 }}>
+        <TrackingMap devices={devices} center={center} />
+        
+        {/* Quadro flutuante com link do Google Maps */}
+        {currentLocationData && (
+          <div style={{
+            position: "absolute",
+            top: "20px",
+            right: "20px",
+            backgroundColor: "rgba(255, 255, 255, 0.95)",
+            border: "2px solid #4285f4",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 1000,
+            minWidth: "200px",
+            cursor: "pointer",
+            transition: "all 0.2s ease"
+          }}
+          onClick={() => window.open(currentLocationData.link, '_blank')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.02)";
+            e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.2)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+          }}
+          >
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "6px"
+            }}>
+              <span style={{ fontSize: "18px" }}>🗺️</span>
+              <span style={{ 
+                fontWeight: "bold", 
+                fontSize: "14px",
+                color: "#1976d2"
+              }}>
+                Ver no Google Maps
+              </span>
+            </div>
+            
+            <div style={{
+              fontSize: "12px",
+              color: "#666",
+              marginBottom: "4px"
+            }}>
+              📱 {currentLocationData.deviceName}
+            </div>
+            
+            <div style={{
+              fontSize: "11px",
+              color: "#888"
+            }}>
+              🕐 {new Date(currentLocationData.timestamp).toLocaleTimeString()}
+            </div>
+            
+            <div style={{
+              fontSize: "10px",
+              color: "#4285f4",
+              marginTop: "6px",
+              textAlign: "center",
+              fontWeight: "500"
+            }}>
+              Clique para abrir
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Painel de Logs de Backup */}
+      <div style={{ 
+        width: "350px", 
+        backgroundColor: "#f5f5f5", 
+        padding: "15px", 
+        overflowY: "auto",
+        borderLeft: "1px solid #ddd"
+      }}>
+        <h3 style={{ margin: "0 0 15px 0", fontSize: "16px" }}>📍 Logs de Backup</h3>
+        
+        {Array.from(backupLogs.entries()).map(([deviceId, logs]) => {
+          const device = devices.find(d => d.deviceId === deviceId);
+          return (
+            <div key={deviceId} style={{ marginBottom: "20px" }}>
+              <h4 style={{ 
+                margin: "0 0 10px 0", 
+                fontSize: "14px", 
+                color: device?.color || "#333"
+              }}>
+                {device?.name || deviceId}
+              </h4>
+              
+              {logs.slice(-10).reverse().map((log, index) => (
+                <div key={index} style={{
+                  backgroundColor: log.isOffline ? "#ffebee" : "#e8f5e8",
+                  border: `1px solid ${log.isOffline ? "#ffcdd2" : "#c8e6c8"}`,
+                  borderRadius: "4px",
+                  padding: "8px",
+                  marginBottom: "8px",
+                  fontSize: "12px"
+                }}>
+                  <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
+                    {log.isOffline ? "🔴 OFFLINE" : "🟢 ONLINE"} - {new Date(log.timestamp).toLocaleTimeString()}
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    📍 {log.position.lat.toFixed(6)}, {log.position.lng.toFixed(6)}
+                  </div>
+                  <a 
+                    href={log.googleMapsLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ 
+                      color: "#1976d2", 
+                      textDecoration: "none",
+                      fontSize: "11px"
+                    }}
+                  >
+                    🗺️ Ver no Google Maps
+                  </a>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+        
+        {backupLogs.size === 0 && (
+          <div style={{ 
+            textAlign: "center", 
+            color: "#666", 
+            fontSize: "14px",
+            marginTop: "50px"
+          }}>
+            Nenhum log de backup ainda
+          </div>
+        )}
+      </div>
     </div>
   );
 }

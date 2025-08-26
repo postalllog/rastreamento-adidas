@@ -17,6 +17,98 @@ const mobileClients = new Set()
 const devices = new Map() // deviceId -> { positions: [], origem: null, destino: null, lastUpdate: timestamp }
 const deviceColors = ['red', 'blue', 'green', 'purple', 'orange', 'yellow', 'pink', 'cyan']
 
+// Sistema de backup com links do Google Maps
+const backupIntervals = new Map() // deviceId -> intervalId
+const backupLogs = new Map() // deviceId -> [{ timestamp, googleMapsLink, isOffline }]
+
+// Função para gerar link do Google Maps
+function generateGoogleMapsLink(lat, lng, deviceName) {
+  return `https://www.google.com/maps?q=${lat},${lng}&t=m&z=15&marker=${encodeURIComponent(deviceName)}`
+}
+
+// Função para criar log de backup
+function createBackupLog(deviceId, device, isOffline = false) {
+  if (device.positions.length === 0) return
+  
+  const lastPosition = device.positions[device.positions.length - 1]
+  const googleMapsLink = generateGoogleMapsLink(
+    lastPosition.lat, 
+    lastPosition.lng, 
+    device.name
+  )
+  
+  if (!backupLogs.has(deviceId)) {
+    backupLogs.set(deviceId, [])
+  }
+  
+  const logEntry = {
+    timestamp: Date.now(),
+    position: { lat: lastPosition.lat, lng: lastPosition.lng },
+    googleMapsLink,
+    isOffline,
+    deviceName: device.name
+  }
+  
+  backupLogs.get(deviceId).push(logEntry)
+  
+  // Manter apenas últimos 50 logs
+  if (backupLogs.get(deviceId).length > 50) {
+    backupLogs.get(deviceId) = backupLogs.get(deviceId).slice(-50)
+  }
+  
+  console.log(`📍 Backup log criado para ${device.name}:`, {
+    isOffline: isOffline ? '🔴 OFFLINE' : '🟢 ONLINE',
+    link: googleMapsLink
+  })
+  
+  // Enviar logs para clientes web
+  const allBackupLogs = {
+    deviceId,
+    logs: backupLogs.get(deviceId)
+  }
+  
+  webClients.forEach(webClientId => {
+    const webSocket = io.sockets.sockets.get(webClientId)
+    if (webSocket) {
+      webSocket.emit("backup-logs", allBackupLogs)
+    }
+  })
+}
+
+// Função para iniciar backup automático
+function startBackupInterval(deviceId, device) {
+  // Limpar intervalo anterior se existir
+  if (backupIntervals.has(deviceId)) {
+    clearInterval(backupIntervals.get(deviceId))
+  }
+  
+  // Criar backup a cada 10 minutos (600000ms)
+  const intervalId = setInterval(() => {
+    createBackupLog(deviceId, device, false)
+  }, 600000) // 10 minutos
+  
+  backupIntervals.set(deviceId, intervalId)
+  console.log(`⏰ Backup automático iniciado para ${device.name} (10min)`)
+}
+
+// Função para detectar dispositivo offline e criar backups mais frequentes
+function handleOfflineDevice(deviceId, device) {
+  console.log(`🔴 Dispositivo ${device.name} detectado como offline`)
+  
+  // Limpar intervalo normal
+  if (backupIntervals.has(deviceId)) {
+    clearInterval(backupIntervals.get(deviceId))
+  }
+  
+  // Criar backup offline a cada 5 minutos (300000ms)
+  const offlineIntervalId = setInterval(() => {
+    createBackupLog(deviceId, device, true)
+  }, 300000) // 5 minutos
+  
+  backupIntervals.set(deviceId, offlineIntervalId)
+  console.log(`⚠️ Backup offline iniciado para ${device.name} (5min)`)
+}
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
@@ -74,14 +166,18 @@ app.prepare().then(() => {
       // Inicializar aparelho se não existir
       if (!devices.has(deviceId)) {
         const colorIndex = devices.size % deviceColors.length
-        devices.set(deviceId, {
+        const newDevice = {
           positions: [],
           origem: null,
           destino: null,
           color: deviceColors[colorIndex],
           lastUpdate: Date.now(),
           name: data.deviceName || `Aparelho ${devices.size + 1}`
-        })
+        }
+        devices.set(deviceId, newDevice)
+        
+        // Iniciar sistema de backup para novo dispositivo
+        startBackupInterval(deviceId, newDevice)
       }
       
       const device = devices.get(deviceId)
@@ -110,7 +206,16 @@ app.prepare().then(() => {
           device.positions = device.positions.slice(-100)
         }
       }
-      device.lastUpdate = Date.now()
+      
+      const now = Date.now()
+      const timeSinceLastUpdate = now - device.lastUpdate
+      device.lastUpdate = now
+      
+      // Se ficou mais de 15 minutos offline, reiniciar backup normal
+      if (timeSinceLastUpdate > 900000) { // 15 minutos
+        console.log(`🟢 Dispositivo ${device.name} voltou online após ${Math.round(timeSinceLastUpdate/60000)}min`)
+        startBackupInterval(deviceId, device)
+      }
       
       // Enviar dados de TODOS os aparelhos para clientes web
       const allDevicesData = {
@@ -134,8 +239,25 @@ app.prepare().then(() => {
 
     socket.on("disconnect", () => {
       console.log('❌ Cliente desconectado:', socket.id)
+      
+      // Verificar se é um cliente mobile desconectando
+      const wasMobileClient = mobileClients.has(socket.id)
+      
       webClients.delete(socket.id)
       mobileClients.delete(socket.id)
+      
+      // Se for um cliente mobile, iniciar monitoramento offline
+      if (wasMobileClient) {
+        devices.forEach((device, deviceId) => {
+          setTimeout(() => {
+            // Verificar se ainda está offline após 2 minutos
+            const timeSinceLastUpdate = Date.now() - device.lastUpdate
+            if (timeSinceLastUpdate > 120000) { // 2 minutos
+              handleOfflineDevice(deviceId, device)
+            }
+          }, 120000) // 2 minutos
+        })
+      }
     })
   })
 
