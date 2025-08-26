@@ -21,6 +21,13 @@ export default function HomePage() {
     const savedLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
     setDisconnectionLogs(savedLogs);
     
+    // Limpar logs a cada 20 minutos
+    const clearLogsInterval = setInterval(() => {
+      console.log('🧹 Limpando logs de desconexão');
+      localStorage.removeItem('disconnectionLogs');
+      setDisconnectionLogs([]);
+    }, 1200000); // 20 minutos
+    
     console.log('🔗 Conectando ao WebSocket na mesma porta');
     
     const socket: Socket = io(); // Conecta na mesma porta do Next.js
@@ -94,7 +101,10 @@ export default function HomePage() {
       setDisconnectionLogs(updatedLogs);
     });
 
-    return () => {socket.disconnect();}
+    return () => {
+      socket.disconnect();
+      clearInterval(clearLogsInterval);
+    }
   }, []);
 
   // Gerar link do Google Maps para o aparelho ativo
