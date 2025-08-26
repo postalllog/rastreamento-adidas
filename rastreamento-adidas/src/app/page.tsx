@@ -34,25 +34,6 @@ export default function HomePage() {
     
     socket.on('disconnect', () => {
       console.log('❌ WebSocket desconectado');
-      
-      // Salvar última posição
-      if (devices.length > 0) {
-        const activeDevice = devices.find(d => d.positions.length > 0);
-        if (activeDevice) {
-          const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
-          const disconnectionLog = {
-            timestamp: new Date().toISOString(),
-            deviceName: activeDevice.name,
-            position: { lat: lastPosition.lat, lng: lastPosition.lng },
-            googleMapsLink: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`
-          };
-          
-          const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
-          const updatedLogs = [disconnectionLog, ...existingLogs.slice(0, 9)];
-          localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
-          setDisconnectionLogs(updatedLogs);
-        }
-      }
     });
     
     // Eventos específicos para conexão/desconexão de usuários
@@ -104,6 +85,14 @@ export default function HomePage() {
       console.log('📱 Dispositivo desconectado');
       window.location.reload();
     });
+    
+    socket.on('device-disconnection-log', (log) => {
+      console.log('🔴 Log de desconexão recebido:', log);
+      const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+      const updatedLogs = [log, ...existingLogs.slice(0, 9)];
+      localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
+      setDisconnectionLogs(updatedLogs);
+    });
 
     return () => {socket.disconnect();}
   }, []);
@@ -129,80 +118,11 @@ export default function HomePage() {
     <div style={{ height: "100vh", position: "relative" }}>
       <TrackingMap devices={devices} center={center} />
       
-      {/* Quadro flutuante com link do Google Maps */}
-      {currentLocationData && (
-        <div style={{
-          position: "absolute",
-          top: "20px",
-          right: "20px",
-          backgroundColor: "rgba(255, 255, 255, 0.95)",
-          border: "2px solid #4285f4",
-          borderRadius: "30px",
-          padding: "12px 16px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-          minWidth: "200px",
-          cursor: "pointer",
-          transition: "all 0.2s ease",
-          zIndex: 1000
-        }}
-        onClick={() => window.open(currentLocationData.link, '_blank')}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.02)";
-          e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.2)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
-          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-        }}
-        >
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            marginBottom: "6px"
-          }}>
-            <span style={{ fontSize: "18px" }}>🗺️</span>
-            <span style={{ 
-              fontWeight: "bold", 
-              fontSize: "14px",
-              color: "#1976d2"
-            }}>
-              Ver no Google Maps
-            </span>
-          </div>
-          
-          <div style={{
-            fontSize: "12px",
-            color: "#666",
-            marginBottom: "4px"
-          }}>
-            📱 {currentLocationData.deviceName}
-          </div>
-          
-          <div style={{
-            fontSize: "11px",
-            color: "#888"
-          }}>
-            🕐 {new Date(currentLocationData.timestamp).toLocaleTimeString()}
-          </div>
-          
-          <div style={{
-            fontSize: "10px",
-            color: "#4285f4",
-            marginTop: "6px",
-            textAlign: "center",
-            fontWeight: "500"
-          }}>
-            Clique para abrir
-          </div>
-        </div>
-      )}
-      
       {/* Painel de Logs de Desconexão */}
       <div style={{ 
         position: "absolute",
         top: "20px",
-        right: "250px",
+        right: "30px",
         width: "300px",
         maxHeight: "400px",
         backgroundColor: "rgba(245, 245, 245, 0.95)",
@@ -225,7 +145,7 @@ export default function HomePage() {
             fontSize: "11px"
           }}>
             <div style={{ fontWeight: "bold", marginBottom: "4px", color: "#d32f2f" }}>
-              🔴 DESCONECTADO - {new Date(log.timestamp).toLocaleTimeString()}
+              🔴 DESCONECTADO - {new Date(log.timestamp).toLocaleString()}
             </div>
             <div style={{ marginBottom: "4px", fontSize: "10px" }}>
               📱 {log.deviceName}

@@ -248,11 +248,39 @@ app.prepare().then(() => {
       // Verificar se é um cliente mobile desconectando
       const wasMobileClient = mobileClients.has(socket.id)
       
-      webClients.delete(socket.id)
-      mobileClients.delete(socket.id)
-      
-      // Se for um cliente mobile, notificar clientes web e iniciar monitoramento offline
+      // Se for um cliente mobile, criar log de desconexão imediatamente
       if (wasMobileClient) {
+        devices.forEach((device, deviceId) => {
+          if (device.positions.length > 0) {
+            const lastPosition = device.positions[device.positions.length - 1]
+            const disconnectionLog = {
+              timestamp: Date.now(),
+              deviceName: device.name,
+              position: { lat: lastPosition.lat, lng: lastPosition.lng },
+              googleMapsLink: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`
+            }
+            
+            console.log('🔴 Criando log de desconexão para:', device.name)
+            
+            // Enviar log de desconexão para clientes web
+            webClients.forEach(webClientId => {
+              const webSocket = io.sockets.sockets.get(webClientId)
+              if (webSocket) {
+                webSocket.emit('device-disconnection-log', disconnectionLog)
+              }
+            })
+          }
+          
+          // Limpar intervalos de backup
+          if (backupIntervals.has(deviceId)) {
+            clearInterval(backupIntervals.get(deviceId))
+            backupIntervals.delete(deviceId)
+          }
+        })
+        
+        // Limpar dados dos dispositivos
+        devices.clear()
+        
         // Notificar clientes web sobre desconexão de dispositivo
         webClients.forEach(webClientId => {
           const webSocket = io.sockets.sockets.get(webClientId)
@@ -260,17 +288,10 @@ app.prepare().then(() => {
             webSocket.emit('device-disconnected')
           }
         })
-        
-        devices.forEach((device, deviceId) => {
-          setTimeout(() => {
-            // Verificar se ainda está offline após 2 minutos
-            const timeSinceLastUpdate = Date.now() - device.lastUpdate
-            if (timeSinceLastUpdate > 120000) { // 2 minutos
-              handleOfflineDevice(deviceId, device)
-            }
-          }, 120000) // 2 minutos
-        })
       }
+      
+      webClients.delete(socket.id)
+      mobileClients.delete(socket.id)
     })
   })
 
