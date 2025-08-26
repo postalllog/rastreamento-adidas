@@ -58,30 +58,40 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
   // Controle de estado anterior por aparelho
   const lastStateRef = useRef<Map<string, any>>(new Map());
 
-  // Função para criar segmentos separados baseado em gaps de tempo
-  const createSegments = useCallback((positions: Device['positions']) => {
+  // Função para criar segmentos com rotas inteligentes
+  const createSegments = useCallback(async (positions: Device['positions']) => {
     console.log('📊 createSegments recebeu:', positions.length, 'posições');
     const segments: Location[][] = [];
     let currentSegment: Location[] = [];
     
-    positions.forEach((pos, index) => {
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      
       if (pos.isNewSegment && currentSegment.length > 0) {
-        console.log('✂️ Novo segmento detectado no índice', index);
+        console.log('✂️ Gap detectado - buscando rota inteligente');
+        
         segments.push([...currentSegment]);
-        currentSegment = [];
+        
+        const lastPoint = currentSegment[currentSegment.length - 1];
+        const currentPoint = { lat: pos.lat, lng: pos.lng };
+        
+        const gapRoute = await fetchGapRoute(lastPoint, currentPoint);
+        if (gapRoute.length > 2) {
+          segments.push(gapRoute);
+        }
+        
+        currentSegment = [currentPoint];
+      } else {
+        currentSegment.push({ lat: pos.lat, lng: pos.lng });
       }
-      currentSegment.push({ lat: pos.lat, lng: pos.lng });
-    });
+    }
     
     if (currentSegment.length > 0) {
       segments.push(currentSegment);
     }
     
-    console.log('📊 Segmentos criados:', segments.length, 'segmentos');
-    segments.forEach((seg, i) => console.log(`Segmento ${i + 1}:`, seg.length, 'pontos'));
-    
     return segments;
-  }, []);
+  }, [fetchGapRoute]);
 
   // Função para buscar rota OSRM
   const fetchRoute = useCallback(async (origem: Location, destino: Location, deviceId: string) => {
@@ -116,6 +126,24 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     } catch (error) {
       console.error('Erro ao buscar rota:', error);
     }
+  }, []);
+
+  // Função para buscar rota entre dois pontos (para gaps)
+  const fetchGapRoute = useCallback(async (start: Location, end: Location): Promise<Location[]> => {
+    try {
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+      );
+      const data = await response.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        return data.routes[0].geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => ({ lat, lng })
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao buscar rota do gap:', error);
+    }
+    return [start, end];
   }, []);
 
   // Inicializar o mapa APENAS UMA VEZ
@@ -233,20 +261,19 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
           console.log(`⚠️ ${device.name} não se moveu - todas as posições são iguais`);
           // Não criar trajeto se não houve movimento
         } else {
-          const segments = createSegments(device.positions);
-          console.log(`📊 Segmentos criados:`, segments.length);
-          
-          segments.forEach((segment, index) => {
-            if (segment.length > 1) {
-              console.log(`➡️ Segmento ${index + 1}: ${segment.length} pontos`);
-              const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
-                color: device.color,
-                weight: 3,
-                dashArray: index > 0 ? '10, 5' : '5, 5',
-                opacity: 0.8
-              }).addTo(mapInstanceRef.current!);
-              devicePolylines.push(polyline);
-            }
+          createSegments(device.positions).then(segments => {
+            segments.forEach((segment, index) => {
+              if (segment.length > 1) {
+                const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
+                  color: device.color,
+                  weight: 3,
+                  dashArray: '5, 10',
+                  opacity: 0.8
+                }).addTo(mapInstanceRef.current!);
+                devicePolylines.push(polyline);
+              }
+            });
+            polylinesRef.current.set(device.deviceId, devicePolylines);
           });
         }
       } else {
@@ -254,7 +281,9 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       }
 
       markersRef.current.set(device.deviceId, deviceMarkers);
-      polylinesRef.current.set(device.deviceId, devicePolylines);
+      if (device.positions.length <= 1) {
+        polylinesRef.current.set(device.deviceId, devicePolylines);
+      }
     });
   }, [devices, isLoaded, createSegments]);
 
