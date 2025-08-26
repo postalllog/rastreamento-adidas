@@ -14,8 +14,13 @@ export default function HomePage() {
   const [devices, setDevices] = useState<any[]>([]);
   const [center, setCenter] = useState<Location>({ lat: -23.55, lng: -46.63 });
   const [backupLogs, setBackupLogs] = useState<Map<string, any[]>>(new Map());
+  const [disconnectionLogs, setDisconnectionLogs] = useState<any[]>([]);
 
   useEffect(() => {
+    // Carregar logs de desconexão do localStorage
+    const savedLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+    setDisconnectionLogs(savedLogs);
+    
     console.log('🔗 Conectando ao WebSocket na mesma porta');
     
     const socket: Socket = io(); // Conecta na mesma porta do Next.js
@@ -26,10 +31,32 @@ export default function HomePage() {
       console.log('✅ WebSocket conectado! ID:', socket.id);
       // Identificar como cliente web
       socket.emit('client-type', 'web');
+      window.location.reload();
     });
     
     socket.on('disconnect', () => {
       console.log('❌ WebSocket desconectado');
+      
+      // Salvar última posição antes do reload
+      if (devices.length > 0) {
+        const activeDevice = devices.find(d => d.positions.length > 0);
+        if (activeDevice) {
+          const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
+          const disconnectionLog = {
+            timestamp: new Date().toISOString(),
+            deviceName: activeDevice.name,
+            position: { lat: lastPosition.lat, lng: lastPosition.lng },
+            googleMapsLink: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`
+          };
+          
+          // Salvar no localStorage antes do reload
+          const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+          const updatedLogs = [disconnectionLog, ...existingLogs.slice(0, 9)];
+          localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
+        }
+      }
+      
+      setTimeout(() => window.location.reload(), 100);
     });
     
     socket.on('connect_error', (error) => {
@@ -156,42 +183,68 @@ export default function HomePage() {
         </div>
       )}
       
-    
+      {/* Painel de Logs de Desconexão */}
+      <div style={{ 
+        position: "absolute",
+        top: "20px",
+        right: "250px",
+        width: "300px",
+        maxHeight: "400px",
+        backgroundColor: "rgba(245, 245, 245, 0.95)",
+        color: '#000000', 
+        padding: "15px",
+        overflowY: "auto",
+        borderRadius: '15px',
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        zIndex: 999
+      }}>
+        <h3 style={{ margin: "0 0 15px 0", fontSize: "16px" }}>⚠️ Logs de Desconexão</h3>
         
-        {Array.from(backupLogs.entries()).map(([deviceId, logs]) => {
-          const device = devices.find(d => d.deviceId === deviceId);
-          return (
-            <div key={deviceId} style={{ marginBottom: "15px" }}>
-              <h4 style={{ 
-                margin: "0 0 8px 0", 
-                fontSize: "13px", 
-                color: device?.color || "#333"
-              }}>
-                {device?.name || deviceId}
-              </h4>
-              
-              {logs.slice(-5).reverse().map((log, index) => (
-                <div key={index} style={{
-                  backgroundColor: log.isOffline ? "#ffebee" : "#e8f5e8",
-                  border: `1px solid ${log.isOffline ? "#ffcdd2" : "#c8e6c8"}`,
-                  borderRadius: "4px",
-                  padding: "6px",
-                  marginBottom: "6px",
-                  fontSize: "11px"
-                }}>
-                  <div style={{ fontWeight: "bold", marginBottom: "2px" }}>
-                    {log.isOffline ? "🔴" : "🟢"} {new Date(log.timestamp).toLocaleTimeString()}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "#666" }}>
-                    📍 {log.position.lat.toFixed(4)}, {log.position.lng.toFixed(4)}
-                  </div>
-                </div>
-              ))}
+        {disconnectionLogs.map((log, index) => (
+          <div key={index} style={{
+            backgroundColor: "#ffebee",
+            border: "1px solid #ffcdd2",
+            borderRadius: "4px",
+            padding: "8px",
+            marginBottom: "8px",
+            fontSize: "11px"
+          }}>
+            <div style={{ fontWeight: "bold", marginBottom: "4px", color: "#d32f2f" }}>
+              🔴 DESCONECTADO - {new Date(log.timestamp).toLocaleTimeString()}
             </div>
-          );
-        })}
+            <div style={{ marginBottom: "4px", fontSize: "10px" }}>
+              📱 {log.deviceName}
+            </div>
+            <div style={{ marginBottom: "6px", fontSize: "10px", color: "#666" }}>
+              📍 {log.position.lat.toFixed(4)}, {log.position.lng.toFixed(4)}
+            </div>
+            <a 
+              href={log.googleMapsLink} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ 
+                color: "#1976d2", 
+                textDecoration: "none",
+                fontSize: "10px",
+                fontWeight: "bold"
+              }}
+            >
+              🗺️ Ver última posição no Google Maps
+            </a>
+          </div>
+        ))}
         
-       
+        {disconnectionLogs.length === 0 && (
+          <div style={{ 
+            textAlign: "center", 
+            color: "#666", 
+            fontSize: "12px",
+            marginTop: "20px"
+          }}>
+            Nenhuma desconexão registrada
+          </div>
+        )}
+      </div>
       </div>
   );
 }
