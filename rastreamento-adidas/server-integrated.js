@@ -151,13 +151,7 @@ app.prepare().then(() => {
         mobileClients.add(socket.id)
         console.log('📱 Cliente mobile registrado:', socket.id)
         
-        // Notificar clientes web sobre nova conexão de dispositivo
-        webClients.forEach(webClientId => {
-          const webSocket = io.sockets.sockets.get(webClientId)
-          if (webSocket) {
-            webSocket.emit('device-connected')
-          }
-        })
+
       }
     })
 
@@ -251,14 +245,31 @@ app.prepare().then(() => {
       // Atualizar dados do aparelho
       if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
       if (data.destinos && Array.isArray(data.destinos)) {
-        device.destinos = data.destinos.map(dest => ({
-          lat: dest[0], 
-          lng: dest[1],
-          endereco: dest.endereco || null,
-          nd: dest.nd || null
-        }))
+        device.destinos = data.destinos.map(dest => {
+          // Formato: [lat, lng, {endereco, nd}]
+          if (Array.isArray(dest) && dest.length >= 3) {
+            return {
+              lat: dest[0], 
+              lng: dest[1],
+              endereco: dest[2]?.endereco || null,
+              nd: dest[2]?.nd || null
+            }
+          }
+          // Formato: [lat, lng]
+          else if (Array.isArray(dest) && dest.length >= 2) {
+            return { lat: dest[0], lng: dest[1] }
+          }
+          // Formato objeto
+          else {
+            return {
+              lat: dest.lat || dest.latitude, 
+              lng: dest.lng || dest.longitude,
+              endereco: dest.endereco || null,
+              nd: dest.nd || null
+            }
+          }
+        })
       } else if (data.destino) {
-        // Compatibilidade com destino único
         device.destinos = [{ lat: data.destino[0], lng: data.destino[1] }]
       }
       if (data.coords) {
@@ -354,13 +365,7 @@ app.prepare().then(() => {
         devices.clear()
         deviceRoutes.clear()
         
-        // Notificar clientes web sobre desconexão de dispositivo
-        webClients.forEach(webClientId => {
-          const webSocket = io.sockets.sockets.get(webClientId)
-          if (webSocket) {
-            webSocket.emit('device-disconnected')
-          }
-        })
+
       }
       
       webClients.delete(socket.id)
