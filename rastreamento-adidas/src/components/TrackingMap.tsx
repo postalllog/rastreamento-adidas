@@ -22,8 +22,8 @@ interface Device {
 }
 
 interface TrackingMapProps {
-  socketUrl?: string;
-  center?: Location;
+  devices: Device[];
+  center: Location;
 }
 
 // Criar ícones uma única vez fora do componente
@@ -50,14 +50,10 @@ const icons = {
   })
 };
 
-export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat: -23.5505, lng: -46.6333 } }: TrackingMapProps) {
+export function TrackingMap({ devices, center }: TrackingMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const socketRef = useRef<Socket | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
-  const [trackingStatus, setTrackingStatus] = useState<string>('');
   
   // Refs para elementos do mapa
   const markersRef = useRef<Map<string, L.Marker[]>>(new Map());
@@ -151,95 +147,7 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
     }
   }, []);
 
-  // Inicializar WebSocket
-  useEffect(() => {
-    if (!socketUrl) return;
 
-    const socket = io(socketUrl, { 
-      transports: ["websocket", "polling"],
-      timeout: 10000 
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log('🌐 Conectado ao servidor WebSocket');
-      setConnectionStatus('connected');
-      // Identificar como cliente web
-      socket.emit('client-type', 'web');
-    });
-
-    socket.on("disconnect", () => {
-      console.log('❌ Desconectado do servidor WebSocket');
-      setConnectionStatus('disconnected');
-      setTrackingStatus('');
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error('❌ Erro de conexão WebSocket:', error);
-      setConnectionStatus('disconnected');
-    });
-
-    // Listener para dados de todos os dispositivos
-    socket.on("all-devices-data", (data) => {
-      console.log('📱 Dados de dispositivos recebidos:', data);
-      if (data.devices && Array.isArray(data.devices)) {
-        setDevices(data.devices);
-      }
-    });
-
-    // Listener para dados de rota
-    socket.on("route-received", (data) => {
-      console.log('📍 Dados de rota recebidos:', data);
-      // Atualizar dispositivo com dados de rota
-      setDevices(prevDevices => 
-        prevDevices.map(device => 
-          device.deviceId === data.deviceId 
-            ? { ...device, routeData: data.routeData }
-            : device
-        )
-      );
-    });
-
-    // Listener para status de rastreamento
-    socket.on("tracking-status", (data) => {
-      console.log('🚀 Status de rastreamento:', data);
-      if (data.status === 'started') {
-        setTrackingStatus(`Rastreamento iniciado: ${data.data.deviceName}`);
-      } else if (data.status === 'stopped') {
-        setTrackingStatus(`Rastreamento encerrado: ${data.data.deviceName}`);
-      }
-    });
-
-    // Listener para conexão de dispositivo
-    socket.on("device-connected", () => {
-      console.log('📱 Novo dispositivo conectado');
-      setTrackingStatus('Novo dispositivo conectado');
-    });
-
-    // Listener para desconexão de dispositivo
-    socket.on("device-disconnected", () => {
-      console.log('📱 Dispositivo desconectado');
-      setTrackingStatus('Dispositivo desconectado');
-      setDevices([]);
-    });
-
-    // Listener para logs de desconexão
-    socket.on("device-disconnection-log", (log) => {
-      console.log('📋 Log de desconexão:', log);
-      setTrackingStatus(`${log.deviceName} desconectado em ${new Date(log.timestamp).toLocaleTimeString()}`);
-    });
-
-    // Listener para backup logs
-    socket.on("backup-logs", (data) => {
-      console.log('📋 Backup logs:', data);
-    });
-
-    setConnectionStatus('connecting');
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [socketUrl]);
 
   // Inicializar o mapa
   useEffect(() => {
@@ -429,168 +337,11 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
     }
   }, [devices, isLoaded, createSegments, fetchRoute]);
 
-  // Status da conexão
-  const getConnectionStatusColor = () => {
-    switch (connectionStatus) {
-      case 'connected': return '#4CAF50';
-      case 'connecting': return '#FF9800';
-      case 'disconnected': return '#f44336';
-      default: return '#757575';
-    }
-  };
 
-  const getConnectionStatusText = () => {
-    switch (connectionStatus) {
-      case 'connected': return 'Conectado';
-      case 'connecting': return 'Conectando...';
-      case 'disconnected': return 'Desconectado';
-      default: return 'Desconhecido';
-    }
-  };
 
   return (
     <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
-      {/* DEBUG: Painel de debug */}
-      <div style={{ 
-        position: 'absolute', 
-        bottom: '10px', 
-        right: '10px',
-        zIndex: 1000,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        color: 'white',
-        padding: '10px',
-        borderRadius: '6px',
-        fontSize: '12px',
-        maxWidth: '300px'
-      }}>
-        <div><strong>DEBUG TrackingMap:</strong></div>
-        <div>Conexão: {connectionStatus}</div>
-        <div>Dispositivos: {devices.length}</div>
-        <div>Mapa carregado: {isLoaded ? 'Sim' : 'Não'}</div>
-        {devices.map((device, i) => (
-          <div key={i}>
-            Dispositivo {i+1}: {device.name} ({device.positions.length} posições)
-          </div>
-        ))}
-      </div>
 
-      {/* Status da conexão */}
-      <div style={{ 
-        position: 'absolute', 
-        top: '10px', 
-        right: '10px',
-        zIndex: 1000,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        padding: '8px 12px',
-        borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        fontSize: '14px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div 
-            style={{ 
-              width: '12px', 
-              height: '12px', 
-              borderRadius: '50%',
-              backgroundColor: getConnectionStatusColor()
-            }}
-          />
-          <span>{getConnectionStatusText()}</span>
-        </div>
-        {trackingStatus && (
-          <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
-            {trackingStatus}
-          </div>
-        )}
-      </div>
-
-      {/* Informações dos dispositivos */}
-      {devices.length > 0 && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '10px', 
-          left: '10px',
-          zIndex: 1000,
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          padding: '12px',
-          borderRadius: '6px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          fontSize: '14px',
-          maxWidth: '300px'
-        }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-            Dispositivos Ativos ({devices.length})
-          </div>
-          {devices.map(device => (
-            <div key={device.deviceId} style={{ marginBottom: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div 
-                  style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    borderRadius: '50%',
-                    backgroundColor: device.color
-                  }}
-                />
-                <span style={{ fontWeight: '500' }}>{device.name}</span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#666', marginLeft: '14px' }}>
-                Posições: {device.positions.length}
-                {device.routeData && (
-                  <>
-                    <br />Rota: {device.routeData.rota || 'N/A'}
-                    <br />Destinos: {device.routeData.destinos?.length || 0}
-                  </>
-                )}
-                {device.positions.length > 0 && (
-                  <>
-                    <br />Última atualização: {new Date(device.lastUpdate).toLocaleTimeString()}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Legenda */}
-      <div style={{ 
-        position: 'absolute', 
-        bottom: '10px', 
-        left: '10px',
-        zIndex: 1000,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        padding: '8px',
-        borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        fontSize: '12px'
-      }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Legenda</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#008000' }} />
-          <span>Origem</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#FF0000' }} />
-          <span>Destino</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#0066CC' }} />
-          <span>Posição Atual</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#FF9800' }} />
-          <span>Waypoints</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div style={{ width: '12px', height: '2px', backgroundColor: '#blue', borderStyle: 'dashed' }} />
-          <span>Rota Planejada</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div style={{ width: '12px', height: '2px', backgroundColor: 'red', borderStyle: 'dashed' }} />
-          <span>Trajeto Percorrido</span>
-        </div>
-      </div>
 
       {/* Mapa */}
       <div 
@@ -612,27 +363,6 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
           fontWeight: '500'
         }}>
           Carregando mapa...
-        </div>
-      )}
-
-      {connectionStatus === 'disconnected' && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)',
-          zIndex: 1000,
-          backgroundColor: 'rgba(244, 67, 54, 0.9)',
-          color: 'white',
-          padding: '20px 30px',
-          borderRadius: '8px',
-          fontSize: '16px',
-          fontWeight: '500',
-          textAlign: 'center'
-        }}>
-          Desconectado do servidor
-          <br />
-          <small style={{ fontSize: '14px' }}>Tentando reconectar...</small>
         </div>
       )}
     </div>
