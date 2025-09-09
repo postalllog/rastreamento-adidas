@@ -266,31 +266,26 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         deviceMarkers.push(origemMarker);
       }
 
-      // Marcadores de destinos
+      // Marcador de destino único (primeiro da lista)
       if (device.destinos && device.destinos.length > 0) {
-        console.log(`📍 Renderizando ${device.destinos.length} destinos para ${device.name}:`, device.destinos);
-        device.destinos.forEach((destino, index) => {
-          console.log(`📍 Tentando renderizar destino ${index + 1}:`, destino);
-          try {
-            console.log(`✅ Criando marcador para destino ${index + 1} em [${destino.lat}, ${destino.lng}]`);
-            console.log('🗺️ Estado do mapa:', {
-              mapExists: !!mapInstanceRef.current,
-              mapContainer: !!mapInstanceRef.current?.getContainer()
-            });
-            
+        const destino = device.destinos[0]; // Apenas o primeiro destino
+        console.log(`📍 Renderizando destino único para ${device.name}:`, destino);
+        try {
+          if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
+              !isNaN(destino.lat) && !isNaN(destino.lng)) {
             const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
               .bindPopup(`
-                <strong>${device.name} - Destino ${index + 1}</strong><br>
+                <strong>${device.name} - Destino</strong><br>
                 ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
                 ${destino.nd ? `ND: ${destino.nd}` : ''}
               `)
               .addTo(mapInstanceRef.current!);
             deviceMarkers.push(destinoMarker);
-            console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa`, destinoMarker);
-          } catch (error) {
-            console.error(`❌ Erro ao criar marcador de destino ${index + 1}:`, error, destino);
+            console.log(`✅ Marcador de destino adicionado ao mapa`);
           }
-        });
+        } catch (error) {
+          console.error(`❌ Erro ao criar marcador de destino:`, error, destino);
+        }
       } else {
         console.log(`⚠️ Nenhum destino encontrado para ${device.name}`);
       }
