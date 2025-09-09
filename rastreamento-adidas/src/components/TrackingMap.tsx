@@ -187,30 +187,28 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     
     console.log('✅ Mapa inicializado, processando dispositivos...');
     
-    // TESTE: Criar marcador de teste no centro do mapa
-    try {
-      const testMarker = L.marker([center.lat, center.lng], { icon: icons.destino })
-        .bindPopup('TESTE - Marcador de teste')
-        .addTo(mapInstanceRef.current!);
-      console.log('🟢 Marcador de teste criado no centro:', testMarker);
-    } catch (error) {
-      console.error('❌ Erro ao criar marcador de teste:', error);
-    }
+
 
     console.log('🗺️ Renderizando aparelhos:', devices.length);
+    
+    if (devices.length === 0) {
+      console.log('⚠️ NENHUM DISPOSITIVO RECEBIDO!');
+      return;
+    }
+    
     devices.forEach(device => {
-      console.log(`📱 Aparelho ${device.name}:`, {
-        origem: device.origem,
-        destinos: device.destinos,
-        positions: device.positions?.length || 0,
-        routeData: device.routeData
-      });
+      console.log(`📱 Aparelho ${device.name}:`, device);
+      console.log(`🎯 Destinos para ${device.name}:`, device.destinos);
+      console.log(`📍 Tipo dos destinos:`, typeof device.destinos, Array.isArray(device.destinos));
       
       if (device.destinos && device.destinos.length > 0) {
-        console.log(`🎯 Destinos detalhados para ${device.name}:`);
+        console.log(`🎯 ${device.destinos.length} destinos encontrados:`);
         device.destinos.forEach((dest, i) => {
-          console.log(`  ${i + 1}. lat: ${dest.lat}, lng: ${dest.lng}, endereco: ${dest.endereco}, nd: ${dest.nd}`);
+          console.log(`  ${i + 1}. lat: ${dest?.lat}, lng: ${dest?.lng}, endereco: ${dest?.endereco}, nd: ${dest?.nd}`);
+          console.log(`      Tipo lat: ${typeof dest?.lat}, Tipo lng: ${typeof dest?.lng}`);
         });
+      } else {
+        console.log(`❌ NENHUM DESTINO para ${device.name}`);
       }
     });
 
