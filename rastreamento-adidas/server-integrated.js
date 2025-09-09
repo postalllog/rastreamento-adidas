@@ -359,6 +359,15 @@ app.prepare().then(() => {
       
       // Atualizar dados do aparelho
       if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
+      
+      // TESTE: Adicionar destinos fixos para debug
+      if (!device.destinos || device.destinos.length === 0) {
+        device.destinos = [
+          { lat: -23.550520, lng: -46.633308, endereco: "Teste 1", nd: "001" },
+          { lat: -23.551000, lng: -46.634000, endereco: "Teste 2", nd: "002" }
+        ];
+        console.log('🎯 TESTE: Destinos fixos adicionados:', device.destinos);
+      }
       if (data.destinos && Array.isArray(data.destinos)) {
         console.log('🎯 Processando destinos:', data.destinos);
         device.destinos = data.destinos

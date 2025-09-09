@@ -257,20 +257,26 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       if (device.destinos && device.destinos.length > 0) {
         console.log(`📍 Renderizando ${device.destinos.length} destinos para ${device.name}:`, device.destinos);
         device.destinos.forEach((destino, index) => {
-          console.log(`📍 Destino ${index + 1}:`, destino);
-          // Validar coordenadas antes de criar marcador
-          if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
-              !isNaN(destino.lat) && !isNaN(destino.lng)) {
-            const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
-              .bindPopup(`
-                <strong>${device.name} - Destino ${index + 1}</strong><br>
-                ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
-                ${destino.nd ? `ND: ${destino.nd}` : ''}
-              `)
-              .addTo(mapInstanceRef.current!);
-            deviceMarkers.push(destinoMarker);
-          } else {
-            console.warn(`⚠️ Destino ${index + 1} inválido:`, destino);
+          console.log(`📍 Tentando renderizar destino ${index + 1}:`, destino);
+          try {
+            // Validar coordenadas antes de criar marcador
+            if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
+                !isNaN(destino.lat) && !isNaN(destino.lng)) {
+              console.log(`✅ Criando marcador para destino ${index + 1} em [${destino.lat}, ${destino.lng}]`);
+              const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
+                .bindPopup(`
+                  <strong>${device.name} - Destino ${index + 1}</strong><br>
+                  ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
+                  ${destino.nd ? `ND: ${destino.nd}` : ''}
+                `)
+                .addTo(mapInstanceRef.current!);
+              deviceMarkers.push(destinoMarker);
+              console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa`);
+            } else {
+              console.warn(`⚠️ Destino ${index + 1} inválido:`, destino);
+            }
+          } catch (error) {
+            console.error(`❌ Erro ao criar marcador de destino ${index + 1}:`, error, destino);
           }
         });
       } else {
