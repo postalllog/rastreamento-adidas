@@ -162,6 +162,40 @@ app.prepare().then(() => {
       const deviceId = routeData.deviceId || socket.id
       deviceRoutes.set(deviceId, routeData)
       
+      // Extrair destinos da rota e aplicar ao dispositivo
+      if (devices.has(deviceId) && routeData.destinos) {
+        const device = devices.get(deviceId)
+        console.log('🎯 Aplicando destinos da rota ao dispositivo:', routeData.destinos)
+        device.destinos = routeData.destinos.map((dest, index) => {
+          if (dest.latitude && dest.longitude) {
+            return {
+              lat: dest.latitude,
+              lng: dest.longitude,
+              endereco: dest.endereco || null,
+              nd: dest.nd || null
+            }
+          }
+          return dest
+        })
+        console.log(`✅ ${device.destinos.length} destinos aplicados ao dispositivo ${device.name}`)
+        
+        // Reenviar dados atualizados para clientes web
+        const allDevicesData = {
+          devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
+            deviceId: id,
+            ...deviceData,
+            routeData: deviceRoutes.get(id) || null
+          }))
+        }
+        
+        webClients.forEach(webClientId => {
+          const webSocket = io.sockets.sockets.get(webClientId)
+          if (webSocket) {
+            webSocket.emit("all-devices-data", allDevicesData)
+          }
+        })
+      }
+      
       // Enviar dados da rota para clientes web
       webClients.forEach(webClientId => {
         const webSocket = io.sockets.sockets.get(webClientId)
@@ -179,6 +213,42 @@ app.prepare().then(() => {
     // Listener para início de rastreamento
     socket.on("tracking-started", (data) => {
       console.log('🚀 Rastreamento iniciado:', data)
+      
+      const deviceId = data.deviceId || socket.id
+      
+      // Se há dados de rota, aplicar destinos ao dispositivo
+      if (data.routeData && data.routeData.destinos && devices.has(deviceId)) {
+        const device = devices.get(deviceId)
+        console.log('🎯 Aplicando destinos do tracking-started:', data.routeData.destinos)
+        device.destinos = data.routeData.destinos.map((dest, index) => {
+          if (dest.latitude && dest.longitude) {
+            return {
+              lat: dest.latitude,
+              lng: dest.longitude,
+              endereco: dest.endereco || null,
+              nd: dest.nd || null
+            }
+          }
+          return dest
+        })
+        console.log(`✅ ${device.destinos.length} destinos aplicados via tracking-started`)
+        
+        // Reenviar dados atualizados para clientes web
+        const allDevicesData = {
+          devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
+            deviceId: id,
+            ...deviceData,
+            routeData: deviceRoutes.get(id) || null
+          }))
+        }
+        
+        webClients.forEach(webClientId => {
+          const webSocket = io.sockets.sockets.get(webClientId)
+          if (webSocket) {
+            webSocket.emit("all-devices-data", allDevicesData)
+          }
+        })
+      }
       
       webClients.forEach(webClientId => {
         const webSocket = io.sockets.sockets.get(webClientId)
