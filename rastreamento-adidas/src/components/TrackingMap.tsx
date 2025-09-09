@@ -215,7 +215,9 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       // Renderizar waypoints da rota se existirem
       if (device.routeData?.destinos) {
         device.routeData.destinos.forEach((destino: any, index: number) => {
-          if (destino.latitude && destino.longitude) {
+          if (destino.latitude && destino.longitude && 
+              typeof destino.latitude === 'number' && typeof destino.longitude === 'number' &&
+              !isNaN(destino.latitude) && !isNaN(destino.longitude)) {
             const waypointIcon = new L.Icon({
               iconUrl: `data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23FF9800" stroke="%23ffffff" stroke-width="2"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white">${index + 1}</text></svg>`,
               iconSize: [24, 24],
@@ -235,7 +237,8 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       }
 
       // Marcador de origem
-      if (device.origem) {
+      if (device.origem && typeof device.origem.lat === 'number' && typeof device.origem.lng === 'number' &&
+          !isNaN(device.origem.lat) && !isNaN(device.origem.lng)) {
         const origemMarker = L.marker([device.origem.lat, device.origem.lng], { icon: icons.origem })
           .bindPopup(`${device.name} - Origem`)
           .addTo(mapInstanceRef.current!);
@@ -247,14 +250,20 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         console.log(`📍 Renderizando ${device.destinos.length} destinos para ${device.name}:`, device.destinos);
         device.destinos.forEach((destino, index) => {
           console.log(`📍 Destino ${index + 1}:`, destino);
-          const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
-            .bindPopup(`
-              <strong>${device.name} - Destino ${index + 1}</strong><br>
-              ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
-              ${destino.nd ? `ND: ${destino.nd}` : ''}
-            `)
-            .addTo(mapInstanceRef.current!);
-          deviceMarkers.push(destinoMarker);
+          // Validar coordenadas antes de criar marcador
+          if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
+              !isNaN(destino.lat) && !isNaN(destino.lng)) {
+            const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
+              .bindPopup(`
+                <strong>${device.name} - Destino ${index + 1}</strong><br>
+                ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
+                ${destino.nd ? `ND: ${destino.nd}` : ''}
+              `)
+              .addTo(mapInstanceRef.current!);
+            deviceMarkers.push(destinoMarker);
+          } else {
+            console.warn(`⚠️ Destino ${index + 1} inválido:`, destino);
+          }
         });
       } else {
         console.log(`⚠️ Nenhum destino encontrado para ${device.name}`);
@@ -278,14 +287,17 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       // Marcador de posição atual
       if (device.positions.length > 0) {
         const lastPos = device.positions[device.positions.length - 1];
-        const currentMarker = L.marker([lastPos.lat, lastPos.lng], { icon: icons.posicaoAtual })
-          .bindPopup(`
-            <strong>${device.name} - Posição Atual</strong><br>
-            Última atualização: ${new Date(lastPos.timestamp).toLocaleTimeString()}<br>
-            Coordenadas: ${lastPos.lat.toFixed(6)}, ${lastPos.lng.toFixed(6)}
-          `)
-          .addTo(mapInstanceRef.current!);
-        deviceMarkers.push(currentMarker);
+        if (typeof lastPos.lat === 'number' && typeof lastPos.lng === 'number' &&
+            !isNaN(lastPos.lat) && !isNaN(lastPos.lng)) {
+          const currentMarker = L.marker([lastPos.lat, lastPos.lng], { icon: icons.posicaoAtual })
+            .bindPopup(`
+              <strong>${device.name} - Posição Atual</strong><br>
+              Última atualização: ${new Date(lastPos.timestamp).toLocaleTimeString()}<br>
+              Coordenadas: ${lastPos.lat.toFixed(6)}, ${lastPos.lng.toFixed(6)}
+            `)
+            .addTo(mapInstanceRef.current!);
+          deviceMarkers.push(currentMarker);
+        }
       }
 
       // Criar trajeto percorrido

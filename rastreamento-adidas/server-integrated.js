@@ -182,17 +182,22 @@ app.prepare().then(() => {
       if (routeData.destinos) {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos da rota ao dispositivo:', routeData.destinos)
-        device.destinos = routeData.destinos.map((dest, index) => {
-          if (dest.latitude && dest.longitude) {
-            return {
-              lat: dest.latitude,
-              lng: dest.longitude,
-              endereco: dest.endereco || null,
-              nd: dest.nd || null
+        device.destinos = routeData.destinos
+          .map((dest, index) => {
+            if (dest.latitude && dest.longitude && 
+                typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
+                !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
+              return {
+                lat: dest.latitude,
+                lng: dest.longitude,
+                endereco: dest.endereco || null,
+                nd: dest.nd || null
+              }
             }
-          }
-          return dest
-        })
+            console.warn(`⚠️ Destino inválido ignorado:`, dest);
+            return null;
+          })
+          .filter(dest => dest !== null);
         console.log(`✅ ${device.destinos.length} destinos aplicados ao dispositivo ${device.name}`)
         
         // Reenviar dados atualizados para clientes web
@@ -252,17 +257,22 @@ app.prepare().then(() => {
       if (data.routeData && data.routeData.destinos) {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos do tracking-started:', data.routeData.destinos)
-        device.destinos = data.routeData.destinos.map((dest, index) => {
-          if (dest.latitude && dest.longitude) {
-            return {
-              lat: dest.latitude,
-              lng: dest.longitude,
-              endereco: dest.endereco || null,
-              nd: dest.nd || null
+        device.destinos = data.routeData.destinos
+          .map((dest, index) => {
+            if (dest.latitude && dest.longitude && 
+                typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
+                !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
+              return {
+                lat: dest.latitude,
+                lng: dest.longitude,
+                endereco: dest.endereco || null,
+                nd: dest.nd || null
+              }
             }
-          }
-          return dest
-        })
+            console.warn(`⚠️ Destino inválido ignorado:`, dest);
+            return null;
+          })
+          .filter(dest => dest !== null);
         console.log(`✅ ${device.destinos.length} destinos aplicados via tracking-started`)
         
         // Reenviar dados atualizados para clientes web
