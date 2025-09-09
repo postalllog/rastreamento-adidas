@@ -119,6 +119,7 @@ export default function HomePage() {
     socket.on('device-connected', () => {
       console.log('📱 Dispositivo conectado');
       setTrackingStatus('📱 Novo dispositivo conectado');
+      // Removido window.location.reload() - causa problemas
     });
     
     socket.on('device-disconnected', () => {
@@ -126,6 +127,7 @@ export default function HomePage() {
       setTrackingStatus('📱 Dispositivo desconectado');
       setDevices([]);
       setRouteData(null);
+      // Removido window.location.reload() - causa problemas
     });
 
     // Logs de backup
