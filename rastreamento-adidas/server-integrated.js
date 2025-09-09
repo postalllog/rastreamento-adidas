@@ -157,7 +157,8 @@ app.prepare().then(() => {
 
     // Novo listener para dados de rota
     socket.on("route-data", (routeData) => {
-      console.log('📍 Dados de rota recebidos:', JSON.stringify(routeData, null, 2))
+      console.log('📍 ===== ROUTE-DATA RECEBIDO =====');
+      console.log('RouteData completo:', JSON.stringify(routeData, null, 2));
       
       const deviceId = routeData.deviceId || socket.id
       deviceRoutes.set(deviceId, routeData)
@@ -234,7 +235,8 @@ app.prepare().then(() => {
 
     // Listener para início de rastreamento
     socket.on("tracking-started", (data) => {
-      console.log('🚀 Rastreamento iniciado:', JSON.stringify(data, null, 2))
+      console.log('🚀 ===== TRACKING-STARTED RECEBIDO =====');
+      console.log('Tracking-started completo:', JSON.stringify(data, null, 2));
       
       const deviceId = data.deviceId || socket.id
       
@@ -329,14 +331,9 @@ app.prepare().then(() => {
     socket.on("posicao-atual", (data) => {
       const deviceId = data.deviceId || socket.id // Usar deviceId ou socket.id como fallback
       
-      console.log('📍 Dados do aparelho', deviceId, 'recebidos:', {
-        origem: data.origem,
-        coords: data.coords,
-        destino: data.destino,
-        destinos: data.destinos,
-        destinoTexto: data.destinoTexto,
-        timestamp: data.timestamp
-      })
+      console.log('📍 ===== POSICAO-ATUAL RECEBIDA =====');
+      console.log('DeviceId:', deviceId);
+      console.log('Dados completos:', JSON.stringify(data, null, 2));
       
       // Inicializar aparelho se não existir
       if (!devices.has(deviceId)) {
