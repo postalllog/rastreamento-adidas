@@ -235,7 +235,7 @@ app.prepare().then(() => {
         const newDevice = {
           positions: [],
           origem: null,
-          destino: null,
+          destinos: [], // Array para múltiplos destinos
           color: deviceColors[colorIndex],
           lastUpdate: Date.now(),
           name: data.deviceName || `Aparelho ${devices.size + 1}`
@@ -250,7 +250,17 @@ app.prepare().then(() => {
       
       // Atualizar dados do aparelho
       if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
-      if (data.destino) device.destino = { lat: data.destino[0], lng: data.destino[1] }
+      if (data.destinos && Array.isArray(data.destinos)) {
+        device.destinos = data.destinos.map(dest => ({
+          lat: dest[0], 
+          lng: dest[1],
+          endereco: dest.endereco || null,
+          nd: dest.nd || null
+        }))
+      } else if (data.destino) {
+        // Compatibilidade com destino único
+        device.destinos = [{ lat: data.destino[0], lng: data.destino[1] }]
+      }
       if (data.coords) {
         const newPosition = { lat: data.coords[0], lng: data.coords[1], timestamp: data.timestamp }
         

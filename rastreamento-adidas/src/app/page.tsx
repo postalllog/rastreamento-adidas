@@ -9,7 +9,7 @@ interface Device {
   deviceId: string;
   positions: Array<{ lat: number; lng: number; timestamp: number; isNewSegment?: boolean }>;
   origem: Location | null;
-  destino: Location | null;
+  destinos: Array<{ lat: number; lng: number; endereco?: string; nd?: string }> | null;
   color: string;
   name: string;
   lastUpdate: number;

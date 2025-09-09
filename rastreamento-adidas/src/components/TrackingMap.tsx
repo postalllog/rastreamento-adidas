@@ -14,7 +14,7 @@ interface Device {
   deviceId: string;
   positions: Array<{ lat: number; lng: number; timestamp: number; isNewSegment?: boolean }>;
   origem: Location | null;
-  destino: Location | null;
+  destinos: Array<{ lat: number; lng: number; endereco?: string; nd?: string }> | null;
   color: string;
   name: string;
   lastUpdate: number;
@@ -235,21 +235,28 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         deviceMarkers.push(origemMarker);
       }
 
-      // Marcador de destino
-      if (device.destino) {
-        const destinoMarker = L.marker([device.destino.lat, device.destino.lng], { icon: icons.destino })
-          .bindPopup(`${device.name} - Destino`)
-          .addTo(mapInstanceRef.current!);
-        deviceMarkers.push(destinoMarker);
+      // Marcadores de destinos
+      if (device.destinos && device.destinos.length > 0) {
+        device.destinos.forEach((destino, index) => {
+          const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
+            .bindPopup(`
+              <strong>${device.name} - Destino ${index + 1}</strong><br>
+              ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
+              ${destino.nd ? `ND: ${destino.nd}` : ''}
+            `)
+            .addTo(mapInstanceRef.current!);
+          deviceMarkers.push(destinoMarker);
+        });
       }
 
-      // Buscar e desenhar rota planejada se origem e destino existem
-      if (device.origem && device.destino) {
-        const routeKey = `${device.origem.lat}-${device.origem.lng}-${device.destino.lat}-${device.destino.lng}`;
+      // Buscar e desenhar rota planejada se origem e destinos existem
+      if (device.origem && device.destinos && device.destinos.length > 0) {
+        const firstDestino = device.destinos[0];
+        const routeKey = `${device.origem.lat}-${device.origem.lng}-${firstDestino.lat}-${firstDestino.lng}`;
         const lastRouteKey = lastStateRef.current.get(device.deviceId)?.routeKey;
         
         if (routeKey !== lastRouteKey) {
-          fetchRoute(device.origem, device.destino, device.deviceId);
+          fetchRoute(device.origem, firstDestino, device.deviceId);
           if (!lastStateRef.current.has(device.deviceId)) {
             lastStateRef.current.set(device.deviceId, {});
           }
@@ -312,7 +319,11 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
           });
         }
         if (device.origem) bounds.extend([device.origem.lat, device.origem.lng]);
-        if (device.destino) bounds.extend([device.destino.lat, device.destino.lng]);
+        if (device.destinos) {
+          device.destinos.forEach(destino => {
+            bounds.extend([destino.lat, destino.lng]);
+          });
+        }
         
         // Incluir waypoints da rota
         if (device.routeData?.destinos) {
