@@ -357,12 +357,11 @@ app.prepare().then(() => {
       // Atualizar dados do aparelho
       if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
       
-      // Verificar e aplicar routeData se existir
+      // Verificar routeData
       const routeData = deviceRoutes.get(deviceId);
-      console.log(`🔍 Verificando routeData para ${deviceId}:`, routeData);
+      console.log(`🔍 RouteData para ${deviceId}:`, routeData);
       
       if (routeData && routeData.destinos && routeData.destinos.length > 0) {
-        console.log(`📍 Aplicando ${routeData.destinos.length} destinos dos routeData`);
         device.destinos = routeData.destinos
           .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
@@ -381,8 +380,7 @@ app.prepare().then(() => {
           .filter(dest => dest !== null);
         console.log(`✅ ${device.destinos.length} destinos aplicados dos routeData`);
       } else {
-        console.log(`⚠️ Nenhum routeData válido encontrado para ${device.name}`);
-        console.log(`📊 DeviceRoutes disponíveis:`, Array.from(deviceRoutes.keys()));
+        console.log(`⚠️ Nenhum routeData encontrado para ${device.name}`);
       }
       if (data.destinos && Array.isArray(data.destinos)) {
         console.log('🎯 Processando destinos do mobile:', data.destinos);
