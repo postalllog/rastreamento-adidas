@@ -21,13 +21,12 @@ const TrackingMap = dynamic(() => import("../components/TrackingMap").then(mod =
 });
 
 export default function HomePage() {
-  const [devices, setDevices] = useState<Device[]>([]);
   const [center, setCenter] = useState<Location>({ lat: -23.55, lng: -46.63 });
-  const [backupLogs, setBackupLogs] = useState<Map<string, any[]>>(new Map());
   const [disconnectionLogs, setDisconnectionLogs] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [trackingStatus, setTrackingStatus] = useState<string>('Aguardando dispositivos...');
   const [routeData, setRouteData] = useState<any>(null);
+  const [currentDeviceInfo, setCurrentDeviceInfo] = useState<any>(null);
 
   useEffect(() => {
     // Carregar logs de desconexão do localStorage
@@ -40,139 +39,116 @@ export default function HomePage() {
       setDisconnectionLogs([]);
     }
     
-    // Limpar logs a cada 40 minutos
-    const clearLogsInterval = setInterval(() => {
-      console.log('🧹 Limpando logs de desconexão');
-      localStorage.removeItem('disconnectionLogs');
-      setDisconnectionLogs([]);
-    }, 2400000); // 40 minutos
-    
-    console.log('🔗 Conectando ao WebSocket na mesma porta');
+    console.log('Conectando ao WebSocket na mesma porta');
     setConnectionStatus('connecting');
     
     const socket: Socket = io();
 
     socket.on('connect', () => {
-      console.log('✅ WebSocket conectado! ID:', socket.id);
+      console.log('WebSocket conectado! ID:', socket.id);
       setConnectionStatus('connected');
       socket.emit('client-type', 'web');
     });
     
     socket.on('disconnect', () => {
-      console.log('❌ WebSocket desconectado');
+      console.log('WebSocket desconectado');
       setConnectionStatus('disconnected');
       setTrackingStatus('Desconectado do servidor');
     });
     
     socket.on('connect_error', (error) => {
-      console.error('⚠️ Erro de conexão WebSocket:', error);
+      console.error('Erro de conexão WebSocket:', error);
       setConnectionStatus('disconnected');
       setTrackingStatus('Erro de conexão');
     });
 
     // Dados de dispositivos
     socket.on("all-devices-data", (data) => {
-      console.log('📍 Dados de todos os aparelhos recebidos:', JSON.stringify(data, null, 2));
-      console.log('📊 Número de aparelhos:', data.devices?.length || 0);
-      setDevices(data.devices || []);
+      console.log('HomePage - Dados de dispositivos recebidos:', data);
       
       if (data.devices && data.devices.length > 0) {
         setTrackingStatus(`${data.devices.length} dispositivo(s) ativo(s)`);
         
-        // Centralizar no último aparelho ativo
-        const lastActiveDevice = data.devices.reduce((latest: any, device: any) => 
-          device.lastUpdate > latest.lastUpdate ? device : latest
-        );
+        // Pegar informações do primeiro dispositivo ativo
+        const activeDevice = data.devices[0];
+        setCurrentDeviceInfo(activeDevice);
         
-        if (lastActiveDevice.positions.length > 0) {
-          const lastPosition = lastActiveDevice.positions[lastActiveDevice.positions.length - 1];
+        // Centralizar no último aparelho ativo se tiver posições
+        if (activeDevice.positions && activeDevice.positions.length > 0) {
+          const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
           setCenter({ lat: lastPosition.lat, lng: lastPosition.lng });
         }
       } else {
         setTrackingStatus('Nenhum dispositivo ativo');
+        setCurrentDeviceInfo(null);
       }
     });
 
     // Dados de rota recebidos
     socket.on("route-received", (data) => {
-      console.log('📍 Dados de rota recebidos:', data);
+      console.log('HomePage - Dados de rota recebidos:', data);
       setRouteData(data.routeData);
       setTrackingStatus(`Rota recebida: ${data.routeData.rota || 'N/A'} - ${data.routeData.totalDestinos || 0} destinos`);
     });
 
     // Status de rastreamento
     socket.on("tracking-status", (data) => {
-      console.log('🚀 Status de rastreamento:', data);
+      console.log('HomePage - Status de rastreamento:', data);
       if (data.status === 'started') {
-        setTrackingStatus(`✅ Rastreamento iniciado: ${data.data.deviceName}`);
+        setTrackingStatus(`Rastreamento iniciado: ${data.data.deviceName}`);
       } else if (data.status === 'stopped') {
-        setTrackingStatus(`⏹️ Rastreamento encerrado: ${data.data.deviceName}`);
-        // Limpar dados de rota quando parar
+        setTrackingStatus(`Rastreamento encerrado: ${data.data.deviceName}`);
+        // Limpar dados após 3 segundos
         setTimeout(() => {
           setRouteData(null);
-          setDevices([]);
+          setCurrentDeviceInfo(null);
         }, 3000);
       }
     });
 
-    // Eventos de conexão/desconexão de dispositivos
+    // Eventos de dispositivos (SEM RELOAD)
     socket.on('device-connected', () => {
-      console.log('📱 Dispositivo conectado');
-      setTrackingStatus('📱 Novo dispositivo conectado');
-      // Removido window.location.reload() - causa problemas
+      console.log('Dispositivo conectado');
+      setTrackingStatus('Novo dispositivo conectado');
     });
     
     socket.on('device-disconnected', () => {
-      console.log('📱 Dispositivo desconectado');
-      setTrackingStatus('📱 Dispositivo desconectado');
-      setDevices([]);
+      console.log('Dispositivo desconectado');
+      setTrackingStatus('Dispositivo desconectado');
+      setCurrentDeviceInfo(null);
       setRouteData(null);
-      // Removido window.location.reload() - causa problemas
-    });
-
-    // Logs de backup
-    socket.on("backup-logs", (data) => {
-      console.log('📝 Logs de backup recebidos:', data);
-      setBackupLogs(prev => {
-        const newMap = new Map(prev);
-        newMap.set(data.deviceId, data.logs);
-        return newMap;
-      });
     });
     
     // Logs de desconexão
     socket.on('device-disconnection-log', (log) => {
-      console.log('🔴 Log de desconexão recebido:', log);
+      console.log('Log de desconexão recebido:', log);
       try {
         const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
         const updatedLogs = [log, ...existingLogs.slice(0, 9)];
         localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
         setDisconnectionLogs(updatedLogs);
-        setTrackingStatus(`🔴 ${log.deviceName} desconectado`);
+        setTrackingStatus(`${log.deviceName} desconectado`);
       } catch (error) {
         console.error('Erro ao salvar log:', error);
-        localStorage.removeItem('disconnectionLogs');
         setDisconnectionLogs([log]);
       }
     });
 
     return () => {
       socket.disconnect();
-      clearInterval(clearLogsInterval);
     }
   }, []);
 
-  // Gerar link do Google Maps para o aparelho ativo
+  // Gerar link do Google Maps para o dispositivo atual
   const generateCurrentLocationLink = () => {
-    if (devices.length === 0) return null;
+    if (!currentDeviceInfo || !currentDeviceInfo.positions || currentDeviceInfo.positions.length === 0) {
+      return null;
+    }
     
-    const activeDevice = devices.find(d => d.positions.length > 0);
-    if (!activeDevice) return null;
-    
-    const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
+    const lastPosition = currentDeviceInfo.positions[currentDeviceInfo.positions.length - 1];
     return {
       link: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`,
-      deviceName: activeDevice.name,
+      deviceName: currentDeviceInfo.name,
       timestamp: lastPosition.timestamp
     };
   };
@@ -206,7 +182,7 @@ export default function HomePage() {
         minWidth: "300px"
       }}>
         <h3 style={{ margin: "0 0 10px 0", fontSize: "18px", color: "#333" }}>
-          🎯 Centro de Monitoramento
+          Centro de Monitoramento
         </h3>
         
         {/* Status da conexão */}
@@ -247,31 +223,49 @@ export default function HomePage() {
             fontSize: "13px"
           }}>
             <div style={{ fontWeight: "bold", color: "#2E7D32", marginBottom: "4px" }}>
-              📋 Rota Ativa
+              Rota Ativa
             </div>
-            <div>🚛 Rota: {routeData.rota || 'N/A'}</div>
-            <div>📍 Destinos: {routeData.totalDestinos || 0}</div>
-            <div>⏰ Iniciado: {new Date(routeData.timestamp).toLocaleTimeString()}</div>
+            <div>Rota: {routeData.rota || 'N/A'}</div>
+            <div>Destinos: {routeData.totalDestinos || 0}</div>
+            <div>Iniciado: {new Date(routeData.timestamp).toLocaleTimeString()}</div>
+          </div>
+        )}
+
+        {/* Informações do dispositivo atual */}
+        {currentDeviceInfo && (
+          <div style={{ 
+            backgroundColor: "#e3f2fd", 
+            border: "1px solid #2196F3",
+            padding: "10px", 
+            borderRadius: "6px",
+            fontSize: "13px",
+            marginBottom: "10px"
+          }}>
+            <div style={{ fontWeight: "bold", color: "#1565C0", marginBottom: "4px" }}>
+              Dispositivo Ativo
+            </div>
+            <div>Nome: {currentDeviceInfo.name}</div>
+            <div>Posições: {currentDeviceInfo.positions?.length || 0}</div>
+            {currentDeviceInfo.positions && currentDeviceInfo.positions.length > 0 && (
+              <div>Última atualização: {new Date(currentDeviceInfo.lastUpdate).toLocaleTimeString()}</div>
+            )}
           </div>
         )}
 
         {/* Link para posição atual */}
         {currentLocationData && (
           <div style={{ 
-            backgroundColor: "#e3f2fd", 
-            border: "1px solid #2196F3",
+            backgroundColor: "#e8f5e8", 
+            border: "1px solid #4CAF50",
             padding: "10px", 
             borderRadius: "6px",
             fontSize: "13px"
           }}>
-            <div style={{ fontWeight: "bold", color: "#1565C0", marginBottom: "4px" }}>
-              📍 Posição Atual
-            </div>
-            <div style={{ marginBottom: "4px" }}>
-              📱 {currentLocationData.deviceName}
+            <div style={{ fontWeight: "bold", color: "#2E7D32", marginBottom: "4px" }}>
+              Posição Atual
             </div>
             <div style={{ marginBottom: "6px", fontSize: "12px", color: "#666" }}>
-              ⏰ {new Date(currentLocationData.timestamp).toLocaleString()}
+              {new Date(currentLocationData.timestamp).toLocaleString()}
             </div>
             <a 
               href={currentLocationData.link} 
@@ -284,7 +278,7 @@ export default function HomePage() {
                 fontWeight: "bold"
               }}
             >
-              🗺️ Ver no Google Maps
+              Ver no Google Maps
             </a>
           </div>
         )}
@@ -305,7 +299,7 @@ export default function HomePage() {
         zIndex: 999
       }}>
         <h3 style={{ margin: "0 0 15px 0", fontSize: "16px", color: "#333" }}>
-          ⚠️ Logs de Desconexão
+          Logs de Desconexão
         </h3>
         
         {disconnectionLogs.map((log, index) => (
@@ -318,16 +312,16 @@ export default function HomePage() {
             fontSize: "12px"
           }}>
             <div style={{ fontWeight: "bold", marginBottom: "6px", color: "#d32f2f" }}>
-              🔴 DESCONECTADO
+              DESCONECTADO
             </div>
             <div style={{ marginBottom: "4px", fontSize: "11px" }}>
-              📱 {log.deviceName}
+              {log.deviceName}
             </div>
             <div style={{ marginBottom: "4px", fontSize: "11px", color: "#666" }}>
-              ⏰ {new Date(log.timestamp).toLocaleString()}
+              {new Date(log.timestamp).toLocaleString()}
             </div>
             <div style={{ marginBottom: "8px", fontSize: "10px", color: "#666" }}>
-              📍 {log.position.lat.toFixed(4)}, {log.position.lng.toFixed(4)}
+              {log.position.lat.toFixed(4)}, {log.position.lng.toFixed(4)}
             </div>
             <a 
               href={log.googleMapsLink} 
@@ -340,7 +334,7 @@ export default function HomePage() {
                 fontWeight: "bold"
               }}
             >
-              🗺️ Ver última posição
+              Ver última posição
             </a>
           </div>
         ))}
@@ -356,49 +350,6 @@ export default function HomePage() {
           </div>
         )}
       </div>
-
-      {/* Painel de Dispositivos Ativos */}
-      {devices.length > 0 && (
-        <div style={{ 
-          position: "absolute",
-          bottom: "20px",
-          left: "20px",
-          backgroundColor: "rgba(255, 255, 255, 0.95)",
-          padding: "12px",
-          borderRadius: '10px',
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-          zIndex: 999,
-          maxWidth: "350px"
-        }}>
-          <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", color: "#333" }}>
-            📱 Dispositivos ({devices.length})
-          </h4>
-          {devices.map(device => (
-            <div key={device.deviceId} style={{ marginBottom: "8px", fontSize: "12px" }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div 
-                  style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    borderRadius: '50%',
-                    backgroundColor: device.color
-                  }}
-                />
-                <span style={{ fontWeight: '500' }}>{device.name}</span>
-              </div>
-              <div style={{ fontSize: '11px', color: '#666', marginLeft: '14px' }}>
-                📍 {device.positions.length} posições
-                {device.routeData && (
-                  <>
-                    {' • '}🚛 {device.routeData.rota}
-                    {' • '}🎯 {device.routeData.destinos?.length || 0} destinos
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

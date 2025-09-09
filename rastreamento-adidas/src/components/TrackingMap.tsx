@@ -443,6 +443,30 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
 
   return (
     <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
+      {/* DEBUG: Painel de debug */}
+      <div style={{ 
+        position: 'absolute', 
+        bottom: '10px', 
+        right: '10px',
+        zIndex: 1000,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        color: 'white',
+        padding: '10px',
+        borderRadius: '6px',
+        fontSize: '12px',
+        maxWidth: '300px'
+      }}>
+        <div><strong>DEBUG TrackingMap:</strong></div>
+        <div>Conexão: {connectionStatus}</div>
+        <div>Dispositivos: {devices.length}</div>
+        <div>Mapa carregado: {isLoaded ? 'Sim' : 'Não'}</div>
+        {devices.map((device, i) => (
+          <div key={i}>
+            Dispositivo {i+1}: {device.name} ({device.positions.length} posições)
+          </div>
+        ))}
+      </div>
+
       {/* Status da conexão */}
       <div style={{ 
         position: 'absolute', 
