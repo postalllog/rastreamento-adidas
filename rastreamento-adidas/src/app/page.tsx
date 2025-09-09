@@ -26,7 +26,7 @@ export default function HomePage() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [trackingStatus, setTrackingStatus] = useState<string>('Aguardando dispositivos...');
   const [routeData, setRouteData] = useState<any>(null);
-  const [currentDeviceInfo, setCurrentDeviceInfo] = useState<any>(null);
+  const [allDevices, setAllDevices] = useState<Device[]>([]);
 
   useEffect(() => {
     // Carregar logs de desconexão do localStorage
@@ -68,15 +68,10 @@ export default function HomePage() {
       
       if (data.devices && data.devices.length > 0) {
         setTrackingStatus(`${data.devices.length} dispositivo(s) ativo(s)`);
-        
-        // Pegar informações do primeiro dispositivo ativo
-        const activeDevice = data.devices[0];
-        setCurrentDeviceInfo(activeDevice);
-        
-        // Centro fixo removido - sem reposicionamento automático
+        setAllDevices(data.devices);
       } else {
         setTrackingStatus('Nenhum dispositivo ativo');
-        setCurrentDeviceInfo(null);
+        setAllDevices([]);
       }
     });
 
@@ -97,7 +92,7 @@ export default function HomePage() {
         // Limpar dados após 3 segundos
         setTimeout(() => {
           setRouteData(null);
-          setCurrentDeviceInfo(null);
+          setAllDevices([]);
         }, 3000);
       }
     });
@@ -111,7 +106,7 @@ export default function HomePage() {
     socket.on('device-disconnected', () => {
       console.log('Dispositivo desconectado');
       setTrackingStatus('Dispositivo desconectado');
-      setCurrentDeviceInfo(null);
+      setAllDevices([]);
       setRouteData(null);
     });
     
@@ -135,16 +130,17 @@ export default function HomePage() {
     }
   }, []);
 
-  // Gerar link do Google Maps para o dispositivo atual
+  // Gerar link do Google Maps para o primeiro dispositivo ativo
   const generateCurrentLocationLink = () => {
-    if (!currentDeviceInfo || !currentDeviceInfo.positions || currentDeviceInfo.positions.length === 0) {
+    if (!allDevices.length || !allDevices[0].positions || allDevices[0].positions.length === 0) {
       return null;
     }
     
-    const lastPosition = currentDeviceInfo.positions[currentDeviceInfo.positions.length - 1];
+    const firstDevice = allDevices[0];
+    const lastPosition = firstDevice.positions[firstDevice.positions.length - 1];
     return {
       link: `https://www.google.com/maps?q=${lastPosition.lat},${lastPosition.lng}&t=m&z=15`,
-      deviceName: currentDeviceInfo.name,
+      deviceName: firstDevice.name,
       timestamp: lastPosition.timestamp
     };
   };
@@ -163,7 +159,7 @@ export default function HomePage() {
 
   return (
     <div style={{ height: "100vh", position: "relative" }}>
-      <TrackingMap devices={currentDeviceInfo ? [currentDeviceInfo] : []} center={center} />
+      <TrackingMap devices={allDevices} center={center} />
       
 
 

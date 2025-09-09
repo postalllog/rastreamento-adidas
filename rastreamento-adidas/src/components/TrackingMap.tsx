@@ -187,8 +187,16 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       console.log(`📱 Aparelho ${device.name}:`, {
         origem: device.origem,
         destinos: device.destinos,
-        positions: device.positions?.length || 0
+        positions: device.positions?.length || 0,
+        routeData: device.routeData
       });
+      
+      if (device.destinos && device.destinos.length > 0) {
+        console.log(`🎯 Destinos detalhados para ${device.name}:`);
+        device.destinos.forEach((dest, i) => {
+          console.log(`  ${i + 1}. lat: ${dest.lat}, lng: ${dest.lng}, endereco: ${dest.endereco}, nd: ${dest.nd}`);
+        });
+      }
     });
 
     // Limpar elementos anteriores
