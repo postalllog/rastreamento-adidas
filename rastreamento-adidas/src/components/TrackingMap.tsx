@@ -34,9 +34,9 @@ const icons = {
     iconAnchor: [12, 12],
   }),
   destino: new L.Icon({
-    iconUrl: '/marker-icon.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
+    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="%23FF0000" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5s-1.12 2.5-2.5 2.5z"/></svg>',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
   }),
   posicaoAtual: new L.Icon({
     iconUrl: '/caminhao-icon.png',
@@ -180,7 +180,22 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
   // Renderizar todos os aparelhos
   useEffect(() => {
-    if (!mapInstanceRef.current || !isLoaded) return;
+    if (!mapInstanceRef.current || !isLoaded) {
+      console.log('⚠️ Mapa não inicializado ainda. mapInstance:', !!mapInstanceRef.current, 'isLoaded:', isLoaded);
+      return;
+    }
+    
+    console.log('✅ Mapa inicializado, processando dispositivos...');
+    
+    // TESTE: Criar marcador de teste no centro do mapa
+    try {
+      const testMarker = L.marker([center.lat, center.lng], { icon: icons.destino })
+        .bindPopup('TESTE - Marcador de teste')
+        .addTo(mapInstanceRef.current!);
+      console.log('🟢 Marcador de teste criado no centro:', testMarker);
+    } catch (error) {
+      console.error('❌ Erro ao criar marcador de teste:', error);
+    }
 
     console.log('🗺️ Renderizando aparelhos:', devices.length);
     devices.forEach(device => {
@@ -259,22 +274,21 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         device.destinos.forEach((destino, index) => {
           console.log(`📍 Tentando renderizar destino ${index + 1}:`, destino);
           try {
-            // Validar coordenadas antes de criar marcador
-            if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
-                !isNaN(destino.lat) && !isNaN(destino.lng)) {
-              console.log(`✅ Criando marcador para destino ${index + 1} em [${destino.lat}, ${destino.lng}]`);
-              const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
-                .bindPopup(`
-                  <strong>${device.name} - Destino ${index + 1}</strong><br>
-                  ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
-                  ${destino.nd ? `ND: ${destino.nd}` : ''}
-                `)
-                .addTo(mapInstanceRef.current!);
-              deviceMarkers.push(destinoMarker);
-              console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa`);
-            } else {
-              console.warn(`⚠️ Destino ${index + 1} inválido:`, destino);
-            }
+            console.log(`✅ Criando marcador para destino ${index + 1} em [${destino.lat}, ${destino.lng}]`);
+            console.log('🗺️ Estado do mapa:', {
+              mapExists: !!mapInstanceRef.current,
+              mapContainer: !!mapInstanceRef.current?.getContainer()
+            });
+            
+            const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
+              .bindPopup(`
+                <strong>${device.name} - Destino ${index + 1}</strong><br>
+                ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
+                ${destino.nd ? `ND: ${destino.nd}` : ''}
+              `)
+              .addTo(mapInstanceRef.current!);
+            deviceMarkers.push(destinoMarker);
+            console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa`, destinoMarker);
           } catch (error) {
             console.error(`❌ Erro ao criar marcador de destino ${index + 1}:`, error, destino);
           }
