@@ -268,13 +268,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
           `)
           .addTo(mapInstanceRef.current!);
         deviceMarkers.push(currentMarker);
-
-        if(mapInstanceRef.current){
-          mapInstanceRef.current.flyTo([lastPos.lat, lastPos.lng], 15, {
-            animate: true,
-            duration: 1.5
-          });
-        }
       }
 
       // Criar trajeto percorrido
