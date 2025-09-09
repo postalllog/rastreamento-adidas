@@ -73,11 +73,7 @@ export default function HomePage() {
         const activeDevice = data.devices[0];
         setCurrentDeviceInfo(activeDevice);
         
-        // Centralizar no último aparelho ativo se tiver posições
-        if (activeDevice.positions && activeDevice.positions.length > 0) {
-          const lastPosition = activeDevice.positions[activeDevice.positions.length - 1];
-          setCenter({ lat: lastPosition.lat, lng: lastPosition.lng });
-        }
+        // Centro fixo removido - sem reposicionamento automático
       } else {
         setTrackingStatus('Nenhum dispositivo ativo');
         setCurrentDeviceInfo(null);

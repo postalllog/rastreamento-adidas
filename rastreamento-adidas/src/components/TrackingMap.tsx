@@ -183,6 +183,13 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     if (!mapInstanceRef.current || !isLoaded) return;
 
     console.log('🗺️ Renderizando aparelhos:', devices.length);
+    devices.forEach(device => {
+      console.log(`📱 Aparelho ${device.name}:`, {
+        origem: device.origem,
+        destinos: device.destinos,
+        positions: device.positions?.length || 0
+      });
+    });
 
     // Limpar elementos anteriores
     markersRef.current.forEach(markers => {
@@ -237,7 +244,9 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
       // Marcadores de destinos
       if (device.destinos && device.destinos.length > 0) {
+        console.log(`📍 Renderizando ${device.destinos.length} destinos para ${device.name}:`, device.destinos);
         device.destinos.forEach((destino, index) => {
+          console.log(`📍 Destino ${index + 1}:`, destino);
           const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
             .bindPopup(`
               <strong>${device.name} - Destino ${index + 1}</strong><br>
@@ -247,6 +256,8 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
             .addTo(mapInstanceRef.current!);
           deviceMarkers.push(destinoMarker);
         });
+      } else {
+        console.log(`⚠️ Nenhum destino encontrado para ${device.name}`);
       }
 
       // Buscar e desenhar rota planejada se origem e destinos existem
@@ -308,37 +319,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       }
     });
 
-    // Ajustar visualização para incluir todos os marcadores
-    if (devices.length > 0 && devices.some(d => d.positions.length > 0)) {
-      const bounds = L.latLngBounds([]);
-      
-      devices.forEach(device => {
-        if (device.positions.length > 0) {
-          device.positions.forEach(pos => {
-            bounds.extend([pos.lat, pos.lng]);
-          });
-        }
-        if (device.origem) bounds.extend([device.origem.lat, device.origem.lng]);
-        if (device.destinos) {
-          device.destinos.forEach(destino => {
-            bounds.extend([destino.lat, destino.lng]);
-          });
-        }
-        
-        // Incluir waypoints da rota
-        if (device.routeData?.destinos) {
-          device.routeData.destinos.forEach((destino: any) => {
-            if (destino.latitude && destino.longitude) {
-              bounds.extend([destino.latitude, destino.longitude]);
-            }
-          });
-        }
-      });
-      
-      if (bounds.isValid()) {
-        mapInstanceRef.current?.fitBounds(bounds, { padding: [20, 20] });
-      }
-    }
+    // Zoom automático removido conforme solicitado
   }, [devices, isLoaded, createSegments, fetchRoute]);
 
 
