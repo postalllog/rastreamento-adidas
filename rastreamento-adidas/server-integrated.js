@@ -19,6 +19,9 @@ const deviceColors = ['red', 'blue', 'green', 'purple', 'orange', 'yellow', 'pin
 const backupIntervals = new Map() 
 const backupLogs = new Map() 
 
+// Armazenar dados de rota por dispositivo
+const deviceRoutes = new Map()
+
 function generateGoogleMapsLink(lat, lng, deviceName) {
   return `https://www.google.com/maps?q=${lat},${lng}&t=m&z=15&marker=${encodeURIComponent(deviceName)}`
 }
@@ -53,7 +56,7 @@ function createBackupLog(deviceId, device, isOffline = false) {
     backupLogs.get(deviceId) = backupLogs.get(deviceId).slice(-50)
   }
   
-  console.log(`📍 Backup log criado para ${device.name}:`, {
+  console.log(`📋 Backup log criado para ${device.name}:`, {
     isOffline: isOffline ? '🔴 OFFLINE' : '🟢 ONLINE',
     link: googleMapsLink
   })
@@ -138,7 +141,8 @@ app.prepare().then(() => {
           const allDevicesData = {
             devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
               deviceId: id,
-              ...deviceData
+              ...deviceData,
+              routeData: deviceRoutes.get(id) || null
             }))
           }
           socket.emit("all-devices-data", allDevicesData)
@@ -155,6 +159,63 @@ app.prepare().then(() => {
           }
         })
       }
+    })
+
+    // Novo listener para dados de rota
+    socket.on("route-data", (routeData) => {
+      console.log('📍 Dados de rota recebidos:', routeData)
+      
+      const deviceId = routeData.deviceId || socket.id
+      deviceRoutes.set(deviceId, routeData)
+      
+      // Enviar dados da rota para clientes web
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId)
+        if (webSocket) {
+          webSocket.emit("route-received", {
+            deviceId,
+            routeData
+          })
+        }
+      })
+      
+      console.log('📤 Dados de rota enviados para', webClients.size, 'clientes web')
+    })
+
+    // Listener para início de rastreamento
+    socket.on("tracking-started", (data) => {
+      console.log('🚀 Rastreamento iniciado:', data)
+      
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId)
+        if (webSocket) {
+          webSocket.emit("tracking-status", { 
+            status: 'started', 
+            data,
+            timestamp: Date.now()
+          })
+        }
+      })
+      
+      console.log('📤 Status de rastreamento (iniciado) enviado para', webClients.size, 'clientes web')
+    })
+
+    // Listener para fim de rastreamento
+    socket.on("tracking-stopped", (data) => {
+      console.log('🛑 Rastreamento encerrado:', data)
+      
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId)
+        if (webSocket) {
+          webSocket.emit("tracking-status", { 
+            status: 'stopped', 
+            data,
+            timestamp: Date.now()
+          })
+        }
+      })
+      
+      console.log('📤 Status de rastreamento (encerrado) enviado para', webClients.size, 'clientes web')
     })
     
     socket.on("posicao-atual", (data) => {
@@ -226,11 +287,12 @@ app.prepare().then(() => {
       const allDevicesData = {
         devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
           deviceId: id,
-          ...deviceData
+          ...deviceData,
+          routeData: deviceRoutes.get(id) || null
         }))
       }
       
-      console.log('📤 Enviando para web:', JSON.stringify(allDevicesData, null, 2));
+      console.log('📤 Enviando para web:', JSON.stringify(allDevicesData, null, 2))
       
       webClients.forEach(webClientId => {
         const webSocket = io.sockets.sockets.get(webClientId)
@@ -278,8 +340,9 @@ app.prepare().then(() => {
           }
         })
         
-        // Limpar dados dos dispositivos
+        // Limpar dados dos dispositivos e rotas
         devices.clear()
+        deviceRoutes.clear()
         
         // Notificar clientes web sobre desconexão de dispositivo
         webClients.forEach(webClientId => {

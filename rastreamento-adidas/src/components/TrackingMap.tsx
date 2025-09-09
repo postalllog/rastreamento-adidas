@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import { io, Socket } from "socket.io-client";
 
 export interface Location {
   lat: number;
@@ -17,11 +18,12 @@ interface Device {
   color: string;
   name: string;
   lastUpdate: number;
+  routeData?: any;
 }
 
 interface TrackingMapProps {
-  devices: Device[];
-  center: Location;
+  socketUrl?: string;
+  center?: Location;
 }
 
 // Criar ícones uma única vez fora do componente
@@ -32,28 +34,36 @@ const icons = {
     iconAnchor: [12, 12],
   }),
   destino: new L.Icon({
-    iconUrl: '/marker-icon.png',
-    iconSize: [41, 41],
-    iconAnchor: [41, 41],
+    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="%23FF0000" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
   }),
   posicaoAtual: new L.Icon({
-    iconUrl: '/caminhao-icon.png',
+    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24"><path fill="%230066CC" d="M12 2L13.09 8.26L22 12L13.09 15.74L12 22L10.91 15.74L2 12L10.91 8.26L12 2Z"/></svg>',
     iconSize: [30, 30],
-    iconAnchor: [10, 10],
+    iconAnchor: [15, 15],
+  }),
+  waypoint: new L.Icon({
+    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="%23FF9800" stroke="%23ffffff" stroke-width="2"/><text x="12" y="16" text-anchor="middle" font-size="12" fill="white">{index}</text></svg>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   })
 };
 
-export function TrackingMap({ devices, center }: TrackingMapProps) {
-  console.log('🗺️ TrackingMap recebeu devices:', devices);
-  
+export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat: -23.5505, lng: -46.6333 } }: TrackingMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [trackingStatus, setTrackingStatus] = useState<string>('');
   
   // Refs para elementos do mapa
   const markersRef = useRef<Map<string, L.Marker[]>>(new Map());
   const polylinesRef = useRef<Map<string, L.Polyline[]>>(new Map());
   const routePolylinesRef = useRef<Map<string, L.Polyline>>(new Map());
+  const waypointMarkersRef = useRef<Map<string, L.Marker[]>>(new Map());
 
   // Controle de estado anterior por aparelho
   const lastStateRef = useRef<Map<string, any>>(new Map());
@@ -78,7 +88,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
   // Função para criar segmentos com rotas inteligentes
   const createSegments = useCallback(async (positions: Device['positions']) => {
-    console.log('📊 createSegments recebeu:', positions.length, 'posições');
     const segments: Location[][] = [];
     let currentSegment: Location[] = [];
     
@@ -86,8 +95,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       const pos = positions[i];
       
       if (pos.isNewSegment && currentSegment.length > 0) {
-        console.log('✂️ Gap detectado - buscando rota inteligente');
-        
         segments.push([...currentSegment]);
         
         const lastPoint = currentSegment[currentSegment.length - 1];
@@ -114,7 +121,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
   // Função para buscar rota OSRM
   const fetchRoute = useCallback(async (origem: Location, destino: Location, deviceId: string) => {
     try {
-      console.log(`🗺️ Buscando rota para ${deviceId}`);
       const response = await fetch(
         `https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`
       );
@@ -138,7 +144,6 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
             opacity: 0.7
           }).addTo(mapInstanceRef.current);
           routePolylinesRef.current.set(deviceId, routePolyline);
-          console.log(`✅ Rota criada para ${deviceId}`);
         }
       }
     } catch (error) {
@@ -146,16 +151,102 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     }
   }, []);
 
-  // Inicializar o mapa APENAS UMA VEZ
+  // Inicializar WebSocket
+  useEffect(() => {
+    if (!socketUrl) return;
+
+    const socket = io(socketUrl, { 
+      transports: ["websocket", "polling"],
+      timeout: 10000 
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log('🌐 Conectado ao servidor WebSocket');
+      setConnectionStatus('connected');
+      // Identificar como cliente web
+      socket.emit('client-type', 'web');
+    });
+
+    socket.on("disconnect", () => {
+      console.log('❌ Desconectado do servidor WebSocket');
+      setConnectionStatus('disconnected');
+      setTrackingStatus('');
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error('❌ Erro de conexão WebSocket:', error);
+      setConnectionStatus('disconnected');
+    });
+
+    // Listener para dados de todos os dispositivos
+    socket.on("all-devices-data", (data) => {
+      console.log('📱 Dados de dispositivos recebidos:', data);
+      if (data.devices && Array.isArray(data.devices)) {
+        setDevices(data.devices);
+      }
+    });
+
+    // Listener para dados de rota
+    socket.on("route-received", (data) => {
+      console.log('📍 Dados de rota recebidos:', data);
+      // Atualizar dispositivo com dados de rota
+      setDevices(prevDevices => 
+        prevDevices.map(device => 
+          device.deviceId === data.deviceId 
+            ? { ...device, routeData: data.routeData }
+            : device
+        )
+      );
+    });
+
+    // Listener para status de rastreamento
+    socket.on("tracking-status", (data) => {
+      console.log('🚀 Status de rastreamento:', data);
+      if (data.status === 'started') {
+        setTrackingStatus(`Rastreamento iniciado: ${data.data.deviceName}`);
+      } else if (data.status === 'stopped') {
+        setTrackingStatus(`Rastreamento encerrado: ${data.data.deviceName}`);
+      }
+    });
+
+    // Listener para conexão de dispositivo
+    socket.on("device-connected", () => {
+      console.log('📱 Novo dispositivo conectado');
+      setTrackingStatus('Novo dispositivo conectado');
+    });
+
+    // Listener para desconexão de dispositivo
+    socket.on("device-disconnected", () => {
+      console.log('📱 Dispositivo desconectado');
+      setTrackingStatus('Dispositivo desconectado');
+      setDevices([]);
+    });
+
+    // Listener para logs de desconexão
+    socket.on("device-disconnection-log", (log) => {
+      console.log('📋 Log de desconexão:', log);
+      setTrackingStatus(`${log.deviceName} desconectado em ${new Date(log.timestamp).toLocaleTimeString()}`);
+    });
+
+    // Listener para backup logs
+    socket.on("backup-logs", (data) => {
+      console.log('📋 Backup logs:', data);
+    });
+
+    setConnectionStatus('connecting');
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [socketUrl]);
+
+  // Inicializar o mapa
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const initMap = () => {
       try {
-        if (mapRef.current && (mapRef.current as any)._leaflet_id) {
-          return;
-        }
-
         const map = L.map(mapRef.current!).setView([center.lat, center.lng], 13);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -171,28 +262,19 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
     initMap();
     
-    // Cleanup APENAS quando o componente for desmontado
     return () => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
     };
-  }, []); // Dependência vazia - só executa uma vez
+  }, [center]);
 
   // Renderizar todos os aparelhos
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
     console.log('🗺️ Renderizando aparelhos:', devices.length);
-    devices.forEach(device => {
-      console.log(`📱 Aparelho ${device.name}:`, {
-        positions: device.positions.length,
-        origem: device.origem,
-        destino: device.destino,
-        color: device.color
-      });
-    });
 
     // Limpar elementos anteriores
     markersRef.current.forEach(markers => {
@@ -201,13 +283,41 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     polylinesRef.current.forEach(polylines => {
       polylines.forEach(polyline => mapInstanceRef.current?.removeLayer(polyline));
     });
+    waypointMarkersRef.current.forEach(markers => {
+      markers.forEach(marker => mapInstanceRef.current?.removeLayer(marker));
+    });
+    
     markersRef.current.clear();
     polylinesRef.current.clear();
+    waypointMarkersRef.current.clear();
 
     // Renderizar cada aparelho
     devices.forEach(device => {
       const deviceMarkers: L.Marker[] = [];
       const devicePolylines: L.Polyline[] = [];
+      const waypointMarkers: L.Marker[] = [];
+
+      // Renderizar waypoints da rota se existirem
+      if (device.routeData?.destinos) {
+        device.routeData.destinos.forEach((destino: any, index: number) => {
+          if (destino.latitude && destino.longitude) {
+            const waypointIcon = new L.Icon({
+              iconUrl: `data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="%23FF9800" stroke="%23ffffff" stroke-width="2"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="white">${index + 1}</text></svg>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
+            });
+
+            const waypointMarker = L.marker([destino.latitude, destino.longitude], { icon: waypointIcon })
+              .bindPopup(`
+                <strong>${device.name} - Destino ${index + 1}</strong><br>
+                ND: ${destino.nd}<br>
+                Endereço: ${destino.endereco || 'N/A'}
+              `)
+              .addTo(mapInstanceRef.current!);
+            waypointMarkers.push(waypointMarker);
+          }
+        });
+      }
 
       // Marcador de origem
       if (device.origem) {
@@ -225,7 +335,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         deviceMarkers.push(destinoMarker);
       }
 
-      // Buscar e desenhar rota planejada (azul) se origem e destino existem
+      // Buscar e desenhar rota planejada se origem e destino existem
       if (device.origem && device.destino) {
         const routeKey = `${device.origem.lat}-${device.origem.lng}-${device.destino.lat}-${device.destino.lng}`;
         const lastRouteKey = lastStateRef.current.get(device.deviceId)?.routeKey;
@@ -243,26 +353,24 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
       if (device.positions.length > 0) {
         const lastPos = device.positions[device.positions.length - 1];
         const currentMarker = L.marker([lastPos.lat, lastPos.lng], { icon: icons.posicaoAtual })
-          .bindPopup(`${device.name} - Posição Atual`)
+          .bindPopup(`
+            <strong>${device.name} - Posição Atual</strong><br>
+            Última atualização: ${new Date(lastPos.timestamp).toLocaleTimeString()}<br>
+            Coordenadas: ${lastPos.lat.toFixed(6)}, ${lastPos.lng.toFixed(6)}
+          `)
           .addTo(mapInstanceRef.current!);
         deviceMarkers.push(currentMarker);
       }
 
-      // Criar segmentos separados para evitar linhas atravessando obstáculos
+      // Criar trajeto percorrido
       if (device.positions.length > 1) {
-        console.log(`🛣️ Criando trajeto para ${device.name} com ${device.positions.length} posições`);
-        
-        // Verificar se há movimento real
         const firstPos = device.positions[0];
         const lastPos = device.positions[device.positions.length - 1];
         const hasMoved = firstPos.lat !== lastPos.lat || firstPos.lng !== lastPos.lng;
         
-        if (!hasMoved) {
-          console.log(`⚠️ ${device.name} não se moveu - todas as posições são iguais`);
-          // Não criar trajeto se não houve movimento
-        } else {
+        if (hasMoved) {
           createSegments(device.positions).then(segments => {
-            segments.forEach((segment, index) => {
+            segments.forEach((segment) => {
               if (segment.length > 1) {
                 const polyline = L.polyline(segment.map(p => [p.lat, p.lng]), {
                   color: device.color,
@@ -276,23 +384,189 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
             polylinesRef.current.set(device.deviceId, devicePolylines);
           });
         }
-      } else {
-        console.log(`⚠️ ${device.name} tem apenas ${device.positions.length} posições - não criando trajeto`);
       }
 
       markersRef.current.set(device.deviceId, deviceMarkers);
+      waypointMarkersRef.current.set(device.deviceId, waypointMarkers);
       if (device.positions.length <= 1) {
         polylinesRef.current.set(device.deviceId, devicePolylines);
       }
     });
-  }, [devices, isLoaded, createSegments]);
+
+    // Ajustar visualização para incluir todos os marcadores
+    if (devices.length > 0 && devices.some(d => d.positions.length > 0)) {
+      const bounds = L.latLngBounds([]);
+      
+      devices.forEach(device => {
+        if (device.positions.length > 0) {
+          device.positions.forEach(pos => {
+            bounds.extend([pos.lat, pos.lng]);
+          });
+        }
+        if (device.origem) bounds.extend([device.origem.lat, device.origem.lng]);
+        if (device.destino) bounds.extend([device.destino.lat, device.destino.lng]);
+        
+        // Incluir waypoints da rota
+        if (device.routeData?.destinos) {
+          device.routeData.destinos.forEach((destino: any) => {
+            if (destino.latitude && destino.longitude) {
+              bounds.extend([destino.latitude, destino.longitude]);
+            }
+          });
+        }
+      });
+      
+      if (bounds.isValid()) {
+        mapInstanceRef.current?.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+  }, [devices, isLoaded, createSegments, fetchRoute]);
+
+  // Status da conexão
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected': return '#4CAF50';
+      case 'connecting': return '#FF9800';
+      case 'disconnected': return '#f44336';
+      default: return '#757575';
+    }
+  };
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'Conectado';
+      case 'connecting': return 'Conectando...';
+      case 'disconnected': return 'Desconectado';
+      default: return 'Desconhecido';
+    }
+  };
 
   return (
-    <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+    <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
+      {/* Status da conexão */}
+      <div style={{ 
+        position: 'absolute', 
+        top: '10px', 
+        right: '10px',
+        zIndex: 1000,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        fontSize: '14px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div 
+            style={{ 
+              width: '12px', 
+              height: '12px', 
+              borderRadius: '50%',
+              backgroundColor: getConnectionStatusColor()
+            }}
+          />
+          <span>{getConnectionStatusText()}</span>
+        </div>
+        {trackingStatus && (
+          <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
+            {trackingStatus}
+          </div>
+        )}
+      </div>
+
+      {/* Informações dos dispositivos */}
+      {devices.length > 0 && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '10px', 
+          left: '10px',
+          zIndex: 1000,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          padding: '12px',
+          borderRadius: '6px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          fontSize: '14px',
+          maxWidth: '300px'
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+            Dispositivos Ativos ({devices.length})
+          </div>
+          {devices.map(device => (
+            <div key={device.deviceId} style={{ marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div 
+                  style={{ 
+                    width: '8px', 
+                    height: '8px', 
+                    borderRadius: '50%',
+                    backgroundColor: device.color
+                  }}
+                />
+                <span style={{ fontWeight: '500' }}>{device.name}</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#666', marginLeft: '14px' }}>
+                Posições: {device.positions.length}
+                {device.routeData && (
+                  <>
+                    <br />Rota: {device.routeData.rota || 'N/A'}
+                    <br />Destinos: {device.routeData.destinos?.length || 0}
+                  </>
+                )}
+                {device.positions.length > 0 && (
+                  <>
+                    <br />Última atualização: {new Date(device.lastUpdate).toLocaleTimeString()}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Legenda */}
+      <div style={{ 
+        position: 'absolute', 
+        bottom: '10px', 
+        left: '10px',
+        zIndex: 1000,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: '8px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        fontSize: '12px'
+      }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Legenda</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#008000' }} />
+          <span>Origem</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#FF0000' }} />
+          <span>Destino</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#0066CC' }} />
+          <span>Posição Atual</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#FF9800' }} />
+          <span>Waypoints</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ width: '12px', height: '2px', backgroundColor: '#blue', borderStyle: 'dashed' }} />
+          <span>Rota Planejada</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ width: '12px', height: '2px', backgroundColor: 'red', borderStyle: 'dashed' }} />
+          <span>Trajeto Percorrido</span>
+        </div>
+      </div>
+
+      {/* Mapa */}
       <div 
         ref={mapRef} 
         style={{ height: '100%', width: '100%' }}
       />
+      
       {!isLoaded && (
         <div style={{ 
           position: 'absolute', 
@@ -301,11 +575,33 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
           transform: 'translate(-50%, -50%)',
           zIndex: 1000,
           backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          padding: '10px 20px',
-          borderRadius: '5px',
-          fontSize: '14px'
+          padding: '20px 30px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          fontWeight: '500'
         }}>
           Carregando mapa...
+        </div>
+      )}
+
+      {connectionStatus === 'disconnected' && (
+        <div style={{ 
+          position: 'absolute', 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)',
+          zIndex: 1000,
+          backgroundColor: 'rgba(244, 67, 54, 0.9)',
+          color: 'white',
+          padding: '20px 30px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          fontWeight: '500',
+          textAlign: 'center'
+        }}>
+          Desconectado do servidor
+          <br />
+          <small style={{ fontSize: '14px' }}>Tentando reconectar...</small>
         </div>
       )}
     </div>
