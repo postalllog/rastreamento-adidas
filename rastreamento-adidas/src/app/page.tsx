@@ -167,7 +167,7 @@ export default function HomePage() {
 
   return (
     <div style={{ height: "100vh", position: "relative" }}>
-      <TrackingMap socketUrl="" center={center} />
+      <TrackingMap devices={currentDeviceInfo ? [currentDeviceInfo] : []} center={center} />
       
       {/* Painel de Status Principal */}
       <div style={{ 
