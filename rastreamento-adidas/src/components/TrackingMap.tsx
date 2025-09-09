@@ -34,12 +34,12 @@ const icons = {
     iconAnchor: [12, 12],
   }),
   destino: new L.Icon({
-    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="%23FF0000" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>',
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
+    iconUrl: '/marker-icon.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
   }),
   posicaoAtual: new L.Icon({
-    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24"><path fill="%230066CC" d="M12 2L13.09 8.26L22 12L13.09 15.74L12 22L10.91 15.74L2 12L10.91 8.26L12 2Z"/></svg>',
+    iconUrl: '/caminhao-icon.png',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
   }),
@@ -360,6 +360,13 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
           `)
           .addTo(mapInstanceRef.current!);
         deviceMarkers.push(currentMarker);
+
+        if(mapInstanceRef.current){
+          mapInstanceRef.current.flyTo([lastPos.lat, lastPos.lng], 15, {
+            animate: true,
+            duration: 1.2
+          });
+        }
       }
 
       // Criar trajeto percorrido
