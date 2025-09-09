@@ -364,7 +364,7 @@ export function TrackingMap({ socketUrl = 'ws://localhost:3000', center = { lat:
         if(mapInstanceRef.current){
           mapInstanceRef.current.flyTo([lastPos.lat, lastPos.lng], 15, {
             animate: true,
-            duration: 1.2
+            duration: 1.5
           });
         }
       }
