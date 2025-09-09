@@ -183,8 +183,9 @@ app.prepare().then(() => {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos da rota ao dispositivo:', routeData.destinos)
         device.destinos = routeData.destinos
+          .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
-            if (dest.latitude && dest.longitude && 
+            if (dest && dest.latitude && dest.longitude && 
                 typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
                 !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
               return {
@@ -258,8 +259,9 @@ app.prepare().then(() => {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos do tracking-started:', data.routeData.destinos)
         device.destinos = data.routeData.destinos
+          .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
-            if (dest.latitude && dest.longitude && 
+            if (dest && dest.latitude && dest.longitude && 
                 typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
                 !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
               return {
@@ -359,37 +361,42 @@ app.prepare().then(() => {
       if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
       if (data.destinos && Array.isArray(data.destinos)) {
         console.log('🎯 Processando destinos:', data.destinos);
-        device.destinos = data.destinos.map((dest, index) => {
-          console.log(`🎯 Destino ${index + 1}:`, dest);
-          // Formato: [lat, lng, {endereco, nd}]
-          if (Array.isArray(dest) && dest.length >= 3) {
-            const processed = {
-              lat: dest[0], 
-              lng: dest[1],
-              endereco: dest[2]?.endereco || null,
-              nd: dest[2]?.nd || null
-            };
-            console.log(`✅ Destino ${index + 1} processado:`, processed);
-            return processed;
-          }
-          // Formato: [lat, lng]
-          else if (Array.isArray(dest) && dest.length >= 2) {
-            const processed = { lat: dest[0], lng: dest[1] };
-            console.log(`✅ Destino ${index + 1} processado:`, processed);
-            return processed;
-          }
-          // Formato objeto
-          else {
-            const processed = {
-              lat: dest.lat || dest.latitude, 
-              lng: dest.lng || dest.longitude,
-              endereco: dest.endereco || null,
-              nd: dest.nd || null
-            };
-            console.log(`✅ Destino ${index + 1} processado:`, processed);
-            return processed;
-          }
-        });
+        device.destinos = data.destinos
+          .filter(dest => dest !== null && dest !== undefined)
+          .map((dest, index) => {
+            console.log(`🎯 Destino ${index + 1}:`, dest);
+            // Formato: [lat, lng, {endereco, nd}]
+            if (Array.isArray(dest) && dest.length >= 3) {
+              const processed = {
+                lat: dest[0], 
+                lng: dest[1],
+                endereco: dest[2]?.endereco || null,
+                nd: dest[2]?.nd || null
+              };
+              console.log(`✅ Destino ${index + 1} processado:`, processed);
+              return processed;
+            }
+            // Formato: [lat, lng]
+            else if (Array.isArray(dest) && dest.length >= 2) {
+              const processed = { lat: dest[0], lng: dest[1] };
+              console.log(`✅ Destino ${index + 1} processado:`, processed);
+              return processed;
+            }
+            // Formato objeto
+            else if (dest && typeof dest === 'object') {
+              const processed = {
+                lat: dest.lat || dest.latitude, 
+                lng: dest.lng || dest.longitude,
+                endereco: dest.endereco || null,
+                nd: dest.nd || null
+              };
+              console.log(`✅ Destino ${index + 1} processado:`, processed);
+              return processed;
+            }
+            console.warn(`⚠️ Destino ${index + 1} inválido:`, dest);
+            return null;
+          })
+          .filter(dest => dest !== null);
         console.log(`🎯 Total de ${device.destinos.length} destinos processados para ${device.name}`);
       } else if (data.destino) {
         device.destinos = [{ lat: data.destino[0], lng: data.destino[1] }];
