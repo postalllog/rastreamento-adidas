@@ -157,13 +157,29 @@ app.prepare().then(() => {
 
     // Novo listener para dados de rota
     socket.on("route-data", (routeData) => {
-      console.log('📍 Dados de rota recebidos:', routeData)
+      console.log('📍 Dados de rota recebidos:', JSON.stringify(routeData, null, 2))
       
       const deviceId = routeData.deviceId || socket.id
       deviceRoutes.set(deviceId, routeData)
       
+      // Criar dispositivo se não existir
+      if (!devices.has(deviceId)) {
+        const colorIndex = devices.size % deviceColors.length
+        const newDevice = {
+          positions: [],
+          origem: null,
+          destinos: [],
+          color: deviceColors[colorIndex],
+          lastUpdate: Date.now(),
+          name: `Aparelho ${devices.size + 1}`
+        }
+        devices.set(deviceId, newDevice)
+        startBackupInterval(deviceId, newDevice)
+        console.log(`📱 Dispositivo ${newDevice.name} criado via route-data`)
+      }
+      
       // Extrair destinos da rota e aplicar ao dispositivo
-      if (devices.has(deviceId) && routeData.destinos) {
+      if (routeData.destinos) {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos da rota ao dispositivo:', routeData.destinos)
         device.destinos = routeData.destinos.map((dest, index) => {
@@ -212,12 +228,28 @@ app.prepare().then(() => {
 
     // Listener para início de rastreamento
     socket.on("tracking-started", (data) => {
-      console.log('🚀 Rastreamento iniciado:', data)
+      console.log('🚀 Rastreamento iniciado:', JSON.stringify(data, null, 2))
       
       const deviceId = data.deviceId || socket.id
       
+      // Criar dispositivo se não existir
+      if (!devices.has(deviceId)) {
+        const colorIndex = devices.size % deviceColors.length
+        const newDevice = {
+          positions: [],
+          origem: null,
+          destinos: [],
+          color: deviceColors[colorIndex],
+          lastUpdate: Date.now(),
+          name: data.deviceName || `Aparelho ${devices.size + 1}`
+        }
+        devices.set(deviceId, newDevice)
+        startBackupInterval(deviceId, newDevice)
+        console.log(`📱 Dispositivo ${newDevice.name} criado via tracking-started`)
+      }
+      
       // Se há dados de rota, aplicar destinos ao dispositivo
-      if (data.routeData && data.routeData.destinos && devices.has(deviceId)) {
+      if (data.routeData && data.routeData.destinos) {
         const device = devices.get(deviceId)
         console.log('🎯 Aplicando destinos do tracking-started:', data.routeData.destinos)
         device.destinos = data.routeData.destinos.map((dest, index) => {
