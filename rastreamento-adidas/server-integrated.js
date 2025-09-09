@@ -384,47 +384,33 @@ app.prepare().then(() => {
         console.log(`⚠️ Nenhum routeData encontrado para ${device.name}`);
       }
       if (data.destinos && Array.isArray(data.destinos)) {
-        console.log('🎯 Processando destinos:', data.destinos);
+        console.log('🎯 Processando destinos do mobile:', data.destinos);
         device.destinos = data.destinos
           .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
             console.log(`🎯 Destino ${index + 1}:`, dest);
-            // Formato: [lat, lng, {endereco, nd}]
-            if (Array.isArray(dest) && dest.length >= 3) {
+            // Formato do mobile: [lat, lng, {endereco, nd}]
+            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
               const processed = {
                 lat: dest[0], 
                 lng: dest[1],
                 endereco: dest[2]?.endereco || null,
                 nd: dest[2]?.nd || null
               };
-              console.log(`✅ Destino ${index + 1} processado:`, processed);
+              console.log(`✅ Destino ${index + 1} processado do mobile:`, processed);
               return processed;
             }
             // Formato: [lat, lng]
-            else if (Array.isArray(dest) && dest.length >= 2) {
+            else if (Array.isArray(dest) && dest.length >= 2 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
               const processed = { lat: dest[0], lng: dest[1] };
-              console.log(`✅ Destino ${index + 1} processado:`, processed);
-              return processed;
-            }
-            // Formato objeto
-            else if (dest && typeof dest === 'object') {
-              const processed = {
-                lat: dest.lat || dest.latitude, 
-                lng: dest.lng || dest.longitude,
-                endereco: dest.endereco || null,
-                nd: dest.nd || null
-              };
-              console.log(`✅ Destino ${index + 1} processado:`, processed);
+              console.log(`✅ Destino ${index + 1} processado simples:`, processed);
               return processed;
             }
             console.warn(`⚠️ Destino ${index + 1} inválido:`, dest);
             return null;
           })
           .filter(dest => dest !== null);
-        console.log(`🎯 Total de ${device.destinos.length} destinos processados para ${device.name}`);
-      } else if (data.destino) {
-        device.destinos = [{ lat: data.destino[0], lng: data.destino[1] }];
-        console.log('🎯 Destino único processado:', device.destinos[0]);
+        console.log(`🎯 Total de ${device.destinos.length} destinos processados do mobile para ${device.name}`);
       } else {
         console.log('⚠️ Nenhum destino encontrado nos dados recebidos');
       }
