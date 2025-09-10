@@ -186,7 +186,17 @@ app.prepare().then(() => {
         device.destinos = routeData.destinos
           .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
-            if (dest && dest.latitude && dest.longitude && 
+            // Formato do mobile: [lat, lng, {endereco, nd}]
+            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+              return {
+                lat: dest[0],
+                lng: dest[1],
+                endereco: dest[2]?.endereco || null,
+                nd: dest[2]?.nd || null
+              }
+            }
+            // Formato padrão: {latitude, longitude}
+            else if (dest && dest.latitude && dest.longitude && 
                 typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
                 !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
               return {
@@ -263,7 +273,17 @@ app.prepare().then(() => {
         device.destinos = data.routeData.destinos
           .filter(dest => dest !== null && dest !== undefined)
           .map((dest, index) => {
-            if (dest && dest.latitude && dest.longitude && 
+            // Formato do mobile: [lat, lng, {endereco, nd}]
+            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+              return {
+                lat: dest[0],
+                lng: dest[1],
+                endereco: dest[2]?.endereco || null,
+                nd: dest[2]?.nd || null
+              }
+            }
+            // Formato padrão: {latitude, longitude}
+            else if (dest && dest.latitude && dest.longitude && 
                 typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
                 !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
               return {
