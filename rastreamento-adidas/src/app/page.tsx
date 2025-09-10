@@ -164,7 +164,7 @@ export default function HomePage() {
 
 
       {/* Painel de Logs de Desconexão */}
-      <div style={{ 
+      {/* <div style={{ 
         position: "absolute",
         top: "20px",
         right: "20px",
@@ -228,7 +228,7 @@ export default function HomePage() {
             Nenhuma desconexão registrada
           </div>
         )}
-      </div>
+      </div> */}
     </div>
   );
 }
