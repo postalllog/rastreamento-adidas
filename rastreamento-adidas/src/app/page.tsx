@@ -56,6 +56,7 @@ export default function HomePage() {
       console.log('WebSocket desconectado');
       setConnectionStatus('disconnected');
       setTrackingStatus('Desconectado do servidor');
+      window.location.reload();
     });
     
     socket.on('connect_error', (error) => {
@@ -133,7 +134,6 @@ export default function HomePage() {
     }
   }, []);
 
-  // Gerar link do Google Maps para o primeiro dispositivo ativo
   const generateCurrentLocationLink = () => {
     if (!allDevices.length || !allDevices[0].positions || allDevices[0].positions.length === 0) {
       return null;
@@ -148,7 +148,7 @@ export default function HomePage() {
     };
   };
 
-  // Status da conexão
+  /* Status da conexão
   const getConnectionStatusColor = () => {
     switch (connectionStatus) {
       case 'connected': return '#4CAF50';
@@ -157,6 +157,7 @@ export default function HomePage() {
       default: return '#757575';
     }
   };
+  */
 
   const currentLocationData = generateCurrentLocationLink();
 
