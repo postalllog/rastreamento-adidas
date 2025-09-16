@@ -488,6 +488,7 @@ app.prepare().then(() => {
 
     socket.on("disconnect", () => {
       console.log('❌ Cliente desconectado:', socket.id)
+      window.location.reload(); 
       
       // Verificar se é um cliente mobile desconectando
       const wasMobileClient = mobileClients.has(socket.id)
