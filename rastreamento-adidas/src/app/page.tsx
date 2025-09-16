@@ -110,23 +110,23 @@ export default function HomePage() {
       setTrackingStatus('Dispositivo desconectado');
       setAllDevices([]);
       setRouteData(null);
-      window.location.reload();
+      setTimeout(() => window.location.reload(), 1000);
     });
     
     // Logs de desconexão
-    // socket.on('device-disconnection-log', (log) => {
-    //   console.log('Log de desconexão recebido:', log);
-    //   try {
-    //     const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
-    //     const updatedLogs = [log, ...existingLogs.slice(0, 9)];
-    //     localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
-    //     setDisconnectionLogs(updatedLogs);
-    //     setTrackingStatus(`${log.deviceName} desconectado`);
-    //   } catch (error) {
-    //     console.error('Erro ao salvar log:', error);
-    //     setDisconnectionLogs([log]);
-    //   }
-    // });
+    socket.on('device-disconnection-log', (log) => {
+      console.log('Log de desconexão recebido:', log);
+      try {
+        const existingLogs = JSON.parse(localStorage.getItem('disconnectionLogs') || '[]');
+        const updatedLogs = [log, ...existingLogs.slice(0, 9)];
+        localStorage.setItem('disconnectionLogs', JSON.stringify(updatedLogs));
+        setDisconnectionLogs(updatedLogs);
+        setTrackingStatus(`${log.deviceName} desconectado`);
+      } catch (error) {
+        console.error('Erro ao salvar log:', error);
+        setDisconnectionLogs([log]);
+      }
+    });
 
     return () => {
       socket.disconnect();
