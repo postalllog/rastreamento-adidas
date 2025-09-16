@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { io, Socket } from "socket.io-client";
 import { Location } from "../components/TrackingMap";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 
 interface Device {
   deviceId: string;
@@ -110,7 +110,7 @@ export default function HomePage() {
       setTrackingStatus('Dispositivo desconectado');
       setAllDevices([]);
       setRouteData(null);
-      router.reload();
+      window.location.reload();
     });
     
     // Logs de desconexão
