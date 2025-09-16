@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { io, Socket } from "socket.io-client";
 import { Location } from "../components/TrackingMap";
+import { useRouter } from "next/router";
 
 interface Device {
   deviceId: string;
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [trackingStatus, setTrackingStatus] = useState<string>('Aguardando dispositivos...');
   const [routeData, setRouteData] = useState<any>(null);
   const [allDevices, setAllDevices] = useState<Device[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
     // Carregar logs de desconexão do localStorage
@@ -108,6 +110,7 @@ export default function HomePage() {
       setTrackingStatus('Dispositivo desconectado');
       setAllDevices([]);
       setRouteData(null);
+      router.reload();
     });
     
     // Logs de desconexão
@@ -164,7 +167,7 @@ export default function HomePage() {
 
 
       {/* Painel de Logs de Desconexão */}
-      {/* <div style={{ 
+       <div style={{ 
         position: "absolute",
         top: "20px",
         right: "20px",
@@ -228,7 +231,7 @@ export default function HomePage() {
             Nenhuma desconexão registrada
           </div>
         )}
-      </div> */}
+      </div>
     </div>
   );
 }
