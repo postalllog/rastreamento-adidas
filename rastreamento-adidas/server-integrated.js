@@ -488,7 +488,6 @@ app.prepare().then(() => {
 
     socket.on("disconnect", () => {
       console.log('❌ Cliente desconectado:', socket.id)
-      window.location.reload(); 
       
       // Verificar se é um cliente mobile desconectando
       const wasMobileClient = mobileClients.has(socket.id)
@@ -512,6 +511,7 @@ app.prepare().then(() => {
               const webSocket = io.sockets.sockets.get(webClientId)
               if (webSocket) {
                 webSocket.emit('device-disconnection-log', disconnectionLog)
+                webSocket.emit('device-disconnected')
               }
             })
           }
@@ -526,8 +526,6 @@ app.prepare().then(() => {
         // Limpar dados dos dispositivos e rotas
         devices.clear()
         deviceRoutes.clear()
-        
-
       }
       
       webClients.delete(socket.id)
