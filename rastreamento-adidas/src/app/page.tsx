@@ -106,11 +106,11 @@ export default function HomePage() {
     });
     
     socket.on('device-disconnected', () => {
-      console.log('Dispositivo desconectado');
+      console.log('Dispositivo desconectado - RECARREGANDO PÁGINA');
       setTrackingStatus('Dispositivo desconectado');
       setAllDevices([]);
       setRouteData(null);
-      setTimeout(() => window.location.reload(), 1000);
+      window.location.reload();
     });
     
     // Logs de desconexão
