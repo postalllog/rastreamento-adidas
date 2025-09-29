@@ -170,6 +170,8 @@ app.prepare().then(() => {
           positions: [],
           origem: null,
           destinos: [],
+          nfs: [], // Array para armazenar NFs
+          entregas: [], // Array para armazenar entregas
           color: deviceColors[colorIndex],
           lastUpdate: Date.now(),
           name: `Aparelho ${devices.size + 1}`
@@ -211,6 +213,21 @@ app.prepare().then(() => {
           })
           .filter(dest => dest !== null);
         console.log(`✅ ${device.destinos.length} destinos aplicados ao dispositivo ${device.name}`)
+      }
+      
+      // Extrair e processar NFs da rota
+      if (routeData.nfs && Array.isArray(routeData.nfs)) {
+        const device = devices.get(deviceId)
+        console.log('📦 Aplicando NFs da rota ao dispositivo:', routeData.nfs)
+        device.nfs = routeData.nfs.map(nf => ({
+          nd: nf.nd,
+          nfe: nf.nfe || null,
+          status: nf.status || 'pending',
+          destinatario: nf.destinatario || null,
+          endereco: nf.endereco || null,
+          timestamp: nf.timestamp || Date.now()
+        }))
+        console.log(`✅ ${device.nfs.length} NFs aplicadas ao dispositivo ${device.name}`)
         
         // Reenviar dados atualizados para clientes web
         const allDevicesData = {
@@ -257,6 +274,8 @@ app.prepare().then(() => {
           positions: [],
           origem: null,
           destinos: [],
+          nfs: [], // Array para armazenar NFs
+          entregas: [], // Array para armazenar entregas
           color: deviceColors[colorIndex],
           lastUpdate: Date.now(),
           name: data.deviceName || `Aparelho ${devices.size + 1}`
@@ -298,6 +317,19 @@ app.prepare().then(() => {
           })
           .filter(dest => dest !== null);
         console.log(`✅ ${device.destinos.length} destinos aplicados via tracking-started`)
+        
+        // Processar NFs se estiverem presentes nos dados da rota
+        if (data.routeData.nfs && Array.isArray(data.routeData.nfs)) {
+          device.nfs = data.routeData.nfs.map(nf => ({
+            nd: nf.nd,
+            nfe: nf.nfe || null,
+            status: nf.status || 'pending',
+            destinatario: nf.destinatario || null,
+            endereco: nf.endereco || null,
+            timestamp: nf.timestamp || Date.now()
+          }))
+          console.log(`✅ ${device.nfs.length} NFs aplicadas via tracking-started`)
+        }
         
         // Reenviar dados atualizados para clientes web
         const allDevicesData = {
@@ -347,6 +379,129 @@ app.prepare().then(() => {
       
       console.log('📤 Status de rastreamento (encerrado) enviado para', webClients.size, 'clientes web')
     })
+
+    // Listener para mudanças de status de NF
+    socket.on("nf-status-changed", (data) => {
+      console.log('📦 ===== NF-STATUS-CHANGED RECEBIDO =====');
+      console.log('Status NF:', JSON.stringify(data, null, 2));
+      
+      const deviceId = data.deviceId || socket.id;
+      
+      // Atualizar status da NF no dispositivo
+      if (devices.has(deviceId)) {
+        const device = devices.get(deviceId);
+        if (!device.nfs) device.nfs = [];
+        
+        // Encontrar e atualizar NF existente ou adicionar nova
+        const existingNfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
+        
+        if (existingNfIndex >= 0) {
+          device.nfs[existingNfIndex] = {
+            ...device.nfs[existingNfIndex],
+            status: data.status,
+            timestamp: data.timestamp || Date.now()
+          };
+          console.log(`✅ NF ${data.nd} atualizada: ${data.status}`);
+        } else {
+          device.nfs.push({
+            nd: data.nd,
+            status: data.status,
+            timestamp: data.timestamp || Date.now(),
+            nfe: data.nfe || null,
+            destinatario: data.destinatario || null,
+            endereco: data.endereco || null
+          });
+          console.log(`📦 Nova NF ${data.nd} adicionada: ${data.status}`);
+        }
+      }
+      
+      // Reenviar dados atualizados para clientes web
+      const allDevicesData = {
+        devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
+          deviceId: id,
+          ...deviceData,
+          routeData: deviceRoutes.get(id) || null
+        }))
+      };
+      
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId);
+        if (webSocket) {
+          webSocket.emit("all-devices-data", allDevicesData);
+          webSocket.emit("nf-status-update", {
+            deviceId,
+            nfData: data,
+            timestamp: Date.now()
+          });
+        }
+      });
+      
+      console.log('📤 Status de NF enviado para', webClients.size, 'clientes web');
+    })
+
+    // Listener para atualizações de entrega
+    socket.on("delivery-status-update", (data) => {
+      console.log('🚚 ===== DELIVERY-STATUS-UPDATE RECEBIDO =====');
+      console.log('Entrega:', JSON.stringify(data, null, 2));
+      
+      const deviceId = data.deviceId || socket.id;
+      
+      // Atualizar status de entrega no dispositivo
+      if (devices.has(deviceId)) {
+        const device = devices.get(deviceId);
+        if (!device.entregas) device.entregas = [];
+        
+        // Registrar entrega
+        device.entregas.push({
+          nd: data.nd,
+          status: data.status,
+          location: data.location,
+          timestamp: data.timestamp || Date.now()
+        });
+        
+        // Atualizar também o status da NF correspondente
+        if (device.nfs) {
+          const nfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
+          if (nfIndex >= 0) {
+            device.nfs[nfIndex].status = data.status;
+            device.nfs[nfIndex].deliveryLocation = data.location;
+            device.nfs[nfIndex].deliveryTimestamp = data.timestamp || Date.now();
+          }
+        }
+        
+        console.log(`🚚 Entrega registrada para ND ${data.nd}: ${data.status}`);
+      }
+      
+      // Enviar para clientes web
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId);
+        if (webSocket) {
+          webSocket.emit("delivery-notification", {
+            deviceId,
+            deliveryData: data,
+            timestamp: Date.now()
+          });
+        }
+      });
+      
+      console.log('📤 Notificação de entrega enviada para', webClients.size, 'clientes web');
+    })
+
+    // Listener para progresso da rota
+    socket.on("route-progress-update", (data) => {
+      console.log('🗺️ ===== ROUTE-PROGRESS-UPDATE RECEBIDO =====');
+      console.log('Progresso:', JSON.stringify(data, null, 2));
+      
+      // Enviar para clientes web
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId);
+        if (webSocket) {
+          webSocket.emit("route-update", data);
+        }
+      });
+      
+      console.log('📤 Progresso da rota enviado para', webClients.size, 'clientes web');
+    })
     
     socket.on("posicao-atual", (data) => {
       const deviceId = data.deviceId || socket.id // Usar deviceId ou socket.id como fallback
@@ -362,6 +517,8 @@ app.prepare().then(() => {
           positions: [],
           origem: null,
           destinos: [], // Array para múltiplos destinos
+          nfs: [], // Array para armazenar NFs
+          entregas: [], // Array para armazenar entregas
           color: deviceColors[colorIndex],
           lastUpdate: Date.now(),
           name: data.deviceName || `Aparelho ${devices.size + 1}`
@@ -374,64 +531,70 @@ app.prepare().then(() => {
       
       const device = devices.get(deviceId)
       
-      // Atualizar dados do aparelho
-      if (data.origem) device.origem = { lat: data.origem[0], lng: data.origem[1] }
-      
-      // Verificar routeData
-      const routeData = deviceRoutes.get(deviceId);
-      console.log(`🔍 RouteData para ${deviceId}:`, routeData);
-      
-      if (routeData && routeData.destinos && routeData.destinos.length > 0) {
-        device.destinos = routeData.destinos
-          .filter(dest => dest !== null && dest !== undefined)
-          .map((dest, index) => {
-            if (dest && dest.latitude && dest.longitude && 
-                typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
-                !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
-              return {
-                lat: dest.latitude,
-                lng: dest.longitude,
-                endereco: dest.endereco || null,
-                nd: dest.nd || null
-              }
-            }
-            return null;
-          })
-          .filter(dest => dest !== null);
-        console.log(`✅ ${device.destinos.length} destinos aplicados dos routeData`);
-      } else {
-        console.log(`⚠️ Nenhum routeData encontrado para ${device.name}`);
+      // Atualizar origem apenas uma vez (quando receber pela primeira vez)
+      if (data.origem && !device.origem) {
+        device.origem = { lat: data.origem[0], lng: data.origem[1] }
+        console.log(`🏁 Origem definida para ${device.name}:`, device.origem)
       }
-      if (data.destinos && Array.isArray(data.destinos)) {
-        console.log('🎯 Processando destinos do mobile:', data.destinos);
-        device.destinos = data.destinos
-          .filter(dest => dest !== null && dest !== undefined)
-          .map((dest, index) => {
-            console.log(`🎯 Destino ${index + 1}:`, dest);
-            // Formato do mobile: [lat, lng, {endereco, nd}]
-            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
-              const processed = {
-                lat: dest[0], 
-                lng: dest[1],
-                endereco: dest[2]?.endereco || null,
-                nd: dest[2]?.nd || null
-              };
-              console.log(`✅ Destino ${index + 1} processado do mobile:`, processed);
-              return processed;
-            }
-            // Formato: [lat, lng]
-            else if (Array.isArray(dest) && dest.length >= 2 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
-              const processed = { lat: dest[0], lng: dest[1] };
-              console.log(`✅ Destino ${index + 1} processado simples:`, processed);
-              return processed;
-            }
-            console.warn(`⚠️ Destino ${index + 1} inválido:`, dest);
-            return null;
-          })
-          .filter(dest => dest !== null);
-        console.log(`🎯 Total de ${device.destinos.length} destinos processados do mobile para ${device.name}`);
-      } else {
-        console.log('⚠️ Nenhum destino encontrado nos dados recebidos');
+      
+      // Processar destinos apenas se não existirem ainda (uma única vez)
+      if (!device.destinos || device.destinos.length === 0) {
+        // Verificar routeData primeiro
+        const routeData = deviceRoutes.get(deviceId);
+        console.log(`🔍 RouteData para ${deviceId}:`, routeData);
+        
+        if (routeData && routeData.destinos && routeData.destinos.length > 0) {
+          device.destinos = routeData.destinos
+            .filter(dest => dest !== null && dest !== undefined)
+            .map((dest, index) => {
+              if (dest && dest.latitude && dest.longitude && 
+                  typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
+                  !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
+                return {
+                  lat: dest.latitude,
+                  lng: dest.longitude,
+                  endereco: dest.endereco || null,
+                  nd: dest.nd || null
+                }
+              }
+              return null;
+            })
+            .filter(dest => dest !== null);
+          console.log(`✅ ${device.destinos.length} destinos aplicados dos routeData para ${device.name}`);
+        }
+        
+        // Se não há routeData, tentar dos dados recebidos
+        else if (data.destinos && Array.isArray(data.destinos)) {
+          console.log('🎯 Processando destinos do mobile:', data.destinos);
+          device.destinos = data.destinos
+            .filter(dest => dest !== null && dest !== undefined)
+            .map((dest, index) => {
+              console.log(`🎯 Destino ${index + 1}:`, dest);
+              // Formato do mobile: [lat, lng, {endereco, nd}]
+              if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+                const processed = {
+                  lat: dest[0], 
+                  lng: dest[1],
+                  endereco: dest[2]?.endereco || null,
+                  nd: dest[2]?.nd || null
+                };
+                console.log(`✅ Destino ${index + 1} processado do mobile:`, processed);
+                return processed;
+              }
+              // Formato: [lat, lng]
+              else if (Array.isArray(dest) && dest.length >= 2 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+                const processed = { lat: dest[0], lng: dest[1] };
+                console.log(`✅ Destino ${index + 1} processado simples:`, processed);
+                return processed;
+              }
+              console.warn(`⚠️ Destino ${index + 1} inválido:`, dest);
+              return null;
+            })
+            .filter(dest => dest !== null);
+          console.log(`🎯 Total de ${device.destinos.length} destinos processados do mobile para ${device.name}`);
+        } else {
+          console.log('⚠️ Nenhum destino encontrado nos dados recebidos');
+        }
       }
       if (data.coords) {
         const newPosition = { lat: data.coords[0], lng: data.coords[1], timestamp: data.timestamp }

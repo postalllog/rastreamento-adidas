@@ -15,6 +15,8 @@ interface Device {
   positions: Array<{ lat: number; lng: number; timestamp: number; isNewSegment?: boolean }>;
   origem: Location | null;
   destinos: Array<{ lat: number; lng: number; endereco?: string; nd?: string }> | null;
+  nfs?: Array<{ nd: string; nfe?: string; status: string; destinatario?: string; endereco?: string; timestamp: number }>;
+  entregas?: Array<{ nd: string; status: string; location?: [number, number]; timestamp: number }>;
   color: string;
   name: string;
   lastUpdate: number;
@@ -35,6 +37,11 @@ const icons = {
   }),
   destino: new L.Icon({
     iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="%23FF0000" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5s-1.12 2.5-2.5 2.5z"/></svg>',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+  }),
+  destinoEntregue: new L.Icon({
+    iconUrl: 'data:image/svg+xml;utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="%2300C851" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5s-1.12 2.5-2.5 2.5z"/><path fill="%23FFFFFF" d="M9 11l2 2l4-4" stroke="%23FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     iconSize: [32, 32],
     iconAnchor: [16, 32],
   }),
@@ -63,6 +70,13 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
   // Controle de estado anterior por aparelho
   const lastStateRef = useRef<Map<string, any>>(new Map());
+
+  // Função para verificar se uma NF foi entregue
+  const isNFEntregue = useCallback((device: Device, nd?: string): boolean => {
+    if (!nd || !device.nfs) return false;
+    const nf = device.nfs.find(nf => nf.nd === nd);
+    return nf?.status === 'delivered' || nf?.status === 'entregue';
+  }, []);
 
   // Função para buscar rota entre dois pontos (para gaps)
   const fetchGapRoute = useCallback(async (start: Location, end: Location): Promise<Location[]> => {
@@ -273,15 +287,22 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
           try {
             if (destino && typeof destino.lat === 'number' && typeof destino.lng === 'number' && 
                 !isNaN(destino.lat) && !isNaN(destino.lng)) {
-              const destinoMarker = L.marker([destino.lat, destino.lng], { icon: icons.destino })
+              
+              // Verificar se esta NF foi entregue
+              const foiEntregue = isNFEntregue(device, destino.nd);
+              const iconToUse = foiEntregue ? icons.destinoEntregue : icons.destino;
+              const statusText = foiEntregue ? '✅ ENTREGUE' : '📦 Pendente';
+              
+              const destinoMarker = L.marker([destino.lat, destino.lng], { icon: iconToUse })
                 .bindPopup(`
                   <strong>${device.name} - Destino ${index + 1}</strong><br>
                   ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
-                  ${destino.nd ? `ND: ${destino.nd}` : ''}
+                  ${destino.nd ? `ND: ${destino.nd}<br>` : ''}
+                  <strong>Status: ${statusText}</strong>
                 `)
                 .addTo(mapInstanceRef.current!);
               deviceMarkers.push(destinoMarker);
-              console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa`);
+              console.log(`✅ Marcador de destino ${index + 1} adicionado ao mapa (${foiEntregue ? 'ENTREGUE' : 'PENDENTE'})`);
             }
           } catch (error) {
             console.error(`❌ Erro ao criar marcador de destino ${index + 1}:`, error, destino);
@@ -354,13 +375,121 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     });
 
     // Zoom automático removido conforme solicitado
-  }, [devices, isLoaded, createSegments, fetchRoute]);
+  }, [devices, isLoaded, createSegments, fetchRoute, isNFEntregue]);
+
+  // useEffect separado para rotas entre destinos consecutivos
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded) return;
+
+    devices.forEach(async (device) => {
+      if (device.destinos && device.destinos.length > 1) {
+        for (let i = 0; i < device.destinos.length - 1; i++) {
+          const start = device.destinos[i];
+          const end = device.destinos[i + 1];
+
+          // Verificar se ambos os destinos foram entregues
+          const startEntregue = isNFEntregue(device, start.nd);
+          const endEntregue = isNFEntregue(device, end.nd);
+          
+          // Definir cor da rota baseado no status de entrega
+          let routeColor = 'purple'; // Padrão para rotas pendentes
+          if (startEntregue && endEntregue) {
+            routeColor = '#00C851'; // Verde para rotas onde ambos destinos foram entregues
+          } else if (startEntregue || endEntregue) {
+            routeColor = '#FF9800'; // Laranja para rotas parcialmente entregues
+          }
+
+          try {
+            const response = await fetch(
+              `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
+            );
+            const data = await response.json();
+            if (data.routes?.[0]?.geometry?.coordinates) {
+              const coords = data.routes[0].geometry.coordinates.map(
+                ([lng, lat]: [number, number]) => [lat, lng]
+              );
+              const polyline = L.polyline(coords, {
+                color: routeColor,
+                weight: 4,
+                opacity: 0.7,
+                dashArray: startEntregue && endEntregue ? '0' : '10, 5' // Linha sólida se entregue, tracejada se pendente
+              }).addTo(mapInstanceRef.current!);
+              routePolylinesRef.current.set(`${device.deviceId}-dest-${i}`, polyline);
+            }
+          } catch (error) {
+            console.error('Erro ao buscar rota entre destinos:', error);
+          }
+        }
+      }
+    });
+  }, [devices, isLoaded, isNFEntregue]);
 
 
 
   return (
     <div style={{ height: '100vh', width: '100%', position: 'relative' }}>
-
+      {/* Legenda */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        zIndex: 1000,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        padding: '15px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        fontSize: '14px',
+        fontFamily: 'Arial, sans-serif',
+        minWidth: '200px'
+      }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#333' }}>
+          📍 Legenda do Mapa
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ 
+            width: '16px', 
+            height: '16px', 
+            backgroundColor: '#008000', 
+            borderRadius: '50%', 
+            marginRight: '8px' 
+          }}></div>
+          <span>Origem</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ 
+            width: '0', 
+            height: '0', 
+            borderLeft: '8px solid transparent',
+            borderRight: '8px solid transparent',
+            borderBottom: '16px solid #FF0000',
+            marginRight: '8px',
+            marginLeft: '4px'
+          }}></div>
+          <span>Destino Pendente</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ 
+            width: '0', 
+            height: '0', 
+            borderLeft: '8px solid transparent',
+            borderRight: '8px solid transparent',
+            borderBottom: '16px solid #00C851',
+            marginRight: '8px',
+            marginLeft: '4px'
+          }}></div>
+          <span>✅ Entregue</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ 
+            width: '16px', 
+            height: '12px', 
+            backgroundColor: '#666', 
+            marginRight: '8px',
+            borderRadius: '2px'
+          }}></div>
+          <span>Posição Atual</span>
+        </div>
+      </div>
 
       {/* Mapa */}
       <div 
