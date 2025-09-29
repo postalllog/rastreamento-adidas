@@ -73,9 +73,23 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
   // Função para verificar se uma NF foi entregue
   const isNFEntregue = useCallback((device: Device, nd?: string): boolean => {
-    if (!nd || !device.nfs) return false;
+    if (!nd || !device.nfs) {
+      console.log(`🔍 isNFEntregue: nd=${nd}, device.nfs exists=${!!device.nfs}`);
+      return false;
+    }
+    
+    console.log(`🔍 Verificando NF ${nd} no dispositivo ${device.name}:`);
+    console.log(`📦 NFs do dispositivo:`, device.nfs);
+    
     const nf = device.nfs.find(nf => nf.nd === nd);
-    return nf?.status === 'delivered' || nf?.status === 'entregue';
+    console.log(`🎯 NF encontrada:`, nf);
+    
+    // Verificar múltiplos status que indicam entrega
+    const statusesEntregues = ['delivered', 'entregue', 'concluido', 'concluída', 'finalizado', 'completed'];
+    const isEntregue = nf ? statusesEntregues.includes(nf.status.toLowerCase()) : false;
+    console.log(`✅ Status entregue: ${isEntregue} (status: ${nf?.status}) - Comparando com: ${statusesEntregues}`);
+    
+    return isEntregue;
   }, []);
 
   // Função para buscar rota entre dois pontos (para gaps)
@@ -213,7 +227,8 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     devices.forEach(device => {
       console.log(`📱 Aparelho ${device.name}:`, device);
       console.log(`🎯 Destinos para ${device.name}:`, device.destinos);
-      console.log(`📍 Tipo dos destinos:`, typeof device.destinos, Array.isArray(device.destinos));
+      console.log(`� NFs para ${device.name}:`, device.nfs);
+      console.log(`�📍 Tipo dos destinos:`, typeof device.destinos, Array.isArray(device.destinos));
       
       if (device.destinos && device.destinos.length > 0) {
         console.log(`🎯 ${device.destinos.length} destinos encontrados:`);
@@ -223,6 +238,15 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         });
       } else {
         console.log(`❌ NENHUM DESTINO para ${device.name}`);
+      }
+
+      if (device.nfs && device.nfs.length > 0) {
+        console.log(`📦 ${device.nfs.length} NFs encontradas:`);
+        device.nfs.forEach((nf, i) => {
+          console.log(`  ${i + 1}. nd: ${nf?.nd}, status: ${nf?.status}, nfe: ${nf?.nfe}`);
+        });
+      } else {
+        console.log(`❌ NENHUMA NF para ${device.name}`);
       }
     });
 
@@ -289,9 +313,11 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
                 !isNaN(destino.lat) && !isNaN(destino.lng)) {
               
               // Verificar se esta NF foi entregue
+              console.log(`🔍 Verificando status para destino ${index + 1}: ND=${destino.nd}`);
               const foiEntregue = isNFEntregue(device, destino.nd);
               const iconToUse = foiEntregue ? icons.destinoEntregue : icons.destino;
               const statusText = foiEntregue ? '✅ ENTREGUE' : '📦 Pendente';
+              console.log(`🎯 Resultado: ${foiEntregue ? 'ENTREGUE' : 'PENDENTE'} para ND ${destino.nd}`);
               
               const destinoMarker = L.marker([destino.lat, destino.lng], { icon: iconToUse })
                 .bindPopup(`

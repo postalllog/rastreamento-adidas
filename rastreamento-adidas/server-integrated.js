@@ -637,6 +637,16 @@ app.prepare().then(() => {
         }))
       }
       
+      // Log específico para NFs
+      allDevicesData.devices.forEach(device => {
+        if (device.nfs && device.nfs.length > 0) {
+          console.log(`📦 NFs sendo enviadas para web - Dispositivo ${device.name}:`);
+          device.nfs.forEach((nf, index) => {
+            console.log(`  ${index + 1}. ND: ${nf.nd}, Status: ${nf.status}, NFe: ${nf.nfe}`);
+          });
+        }
+      });
+      
       console.log('📤 Enviando para web:', JSON.stringify(allDevicesData, null, 2))
       
       webClients.forEach(webClientId => {
