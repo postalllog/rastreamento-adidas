@@ -92,6 +92,17 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     return isEntregue;
   }, []);
 
+  // Função para obter próximo destino não entregue
+  const getProximoDestinoNaoEntregue = useCallback((device: Device): { lat: number; lng: number; endereco?: string; nd?: string } | null => {
+    if (!device.destinos || device.destinos.length === 0) return null;
+    
+    const destinosNaoEntregues = device.destinos.filter(destino => !isNFEntregue(device, destino.nd));
+    
+    console.log(`🎯 Próximos destinos não entregues para ${device.name}:`, destinosNaoEntregues.map(d => ({ nd: d.nd, endereco: d.endereco })));
+    
+    return destinosNaoEntregues.length > 0 ? destinosNaoEntregues[0] : null;
+  }, [isNFEntregue]);
+
   // Função para buscar rota entre dois pontos (para gaps)
   const fetchGapRoute = useCallback(async (start: Location, end: Location): Promise<Location[]> => {
     try {
@@ -142,38 +153,162 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     return segments;
   }, [fetchGapRoute]);
 
-  // Função para buscar rota OSRM
+  // Múltiplas APIs de roteamento com fallback automático
+  const routeProviders = [
+    {
+      name: 'Mapbox',
+      url: (origem: Location, destino: Location) => 
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?geometries=geojson&access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
+      parseCoords: (data: any) => data.routes?.[0]?.geometry?.coordinates?.map(([lng, lat]: [number, number]) => [lat, lng])
+    },
+    {
+      name: 'OpenRouteService',
+      url: (origem: Location, destino: Location) => 
+        `https://api.openrouteservice.org/v2/directions/driving-car?start=${origem.lng},${origem.lat}&end=${destino.lng},${destino.lat}`,
+      parseCoords: (data: any) => data.features?.[0]?.geometry?.coordinates?.map(([lng, lat]: [number, number]) => [lat, lng])
+    },
+    {
+      name: 'OSRM',
+      url: (origem: Location, destino: Location) => 
+        `https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`,
+      parseCoords: (data: any) => data.routes?.[0]?.geometry?.coordinates?.map(([lng, lat]: [number, number]) => [lat, lng])
+    },
+    {
+      name: 'GraphHopper',
+      url: (origem: Location, destino: Location) => 
+        `https://graphhopper.com/api/1/route?point=${origem.lat},${origem.lng}&point=${destino.lat},${destino.lng}&vehicle=car&locale=pt&calc_points=true&debug=true&elevation=false&type=json`,
+      parseCoords: (data: any, decoder: any) => data.paths?.[0]?.points ? decoder(data.paths[0].points) : null
+    }
+  ];
+
+  // Função para decodificar polyline do GraphHopper
+  const decodePolyline = useCallback((encoded: string) => {
+    const points = [];
+    let index = 0;
+    const len = encoded.length;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < len) {
+      let b;
+      let shift = 0;
+      let result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      points.push([lat / 1e5, lng / 1e5]);
+    }
+    return points;
+  }, []);
+
+  // Função principal para buscar rota com múltiplas APIs
   const fetchRoute = useCallback(async (origem: Location, destino: Location, deviceId: string) => {
-    try {
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`
-      );
-      const data = await response.json();
-      if (data.routes?.[0]?.geometry?.coordinates) {
-        const coords = data.routes[0].geometry.coordinates.map(
-          ([lng, lat]: [number, number]) => [lat, lng]
-        );
+    // Validar coordenadas
+    if (!origem.lat || !origem.lng || !destino.lat || !destino.lng) {
+      console.warn('Coordenadas inválidas para rota principal:', { origem, destino });
+      return;
+    }
+
+    const routeKey = `main-${deviceId}`;
+    
+    // Tentar cada provedor em sequência
+    for (let i = 0; i < routeProviders.length; i++) {
+      const provider = routeProviders[i];
+      
+      try {
+        // Delay progressivo para evitar rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300 * i));
         
-        // Remover rota anterior se existir
+        const url = provider.url(origem, destino);
+        console.log(`🌐 Tentando ${provider.name}:`, url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'RastreamentoAdidas/1.0'
+          }
+        });
+        
+        if (!response.ok) {
+          console.warn(`⚠️ ${provider.name} retornou ${response.status}`);
+          continue; // Tentar próximo provedor
+        }
+        
+        const data = await response.json();
+        
+        // Processar coordenadas baseado no provedor
+        let coords = null;
+        if (provider.name === 'GraphHopper' && data.paths?.[0]?.points) {
+          coords = provider.parseCoords(data, decodePolyline);
+        } else {
+          coords = provider.parseCoords(data, decodePolyline);
+        }
+        
+        if (coords && coords.length > 0) {
+          // Remover rota anterior se existir
+          const existingRoute = routePolylinesRef.current.get(deviceId);
+          if (existingRoute && mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(existingRoute);
+          }
+          
+          // Adicionar nova rota principal
+          if (mapInstanceRef.current) {
+            const routePolyline = L.polyline(coords, {
+              color: '#1E90FF', // Azul mais vibrante para rota principal
+              weight: 5,
+              opacity: 0.8
+            }).addTo(mapInstanceRef.current);
+            routePolylinesRef.current.set(deviceId, routePolyline);
+            console.log(`✅ Rota principal obtida via ${provider.name}`);
+            return; // Sucesso! Sair da função
+          }
+        } else {
+          console.warn(`⚠️ ${provider.name} não retornou coordenadas válidas`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro no ${provider.name}:`, error instanceof Error ? error.message : error);
+        continue; // Tentar próximo provedor
+      }
+    }
+    
+    // Se todos os provedores falharam, criar linha reta
+    console.log('🔄 Todos os provedores falharam, criando linha reta...');
+    try {
+      if (mapInstanceRef.current) {
         const existingRoute = routePolylinesRef.current.get(deviceId);
-        if (existingRoute && mapInstanceRef.current) {
+        if (existingRoute) {
           mapInstanceRef.current.removeLayer(existingRoute);
         }
         
-        // Adicionar nova rota
-        if (mapInstanceRef.current) {
-          const routePolyline = L.polyline(coords, {
-            color: 'blue',
-            weight: 4,
-            opacity: 0.7
-          }).addTo(mapInstanceRef.current);
-          routePolylinesRef.current.set(deviceId, routePolyline);
-        }
+        const straightLine = L.polyline([[origem.lat, origem.lng], [destino.lat, destino.lng]], {
+          color: '#1E90FF',
+          weight: 4,
+          opacity: 0.6,
+          dashArray: '12, 8' // Padrão diferente para identificar fallback
+        }).addTo(mapInstanceRef.current);
+        routePolylinesRef.current.set(deviceId, straightLine);
+        console.log('✅ Linha reta principal criada como fallback final');
       }
-    } catch (error) {
-      console.error('Erro ao buscar rota:', error);
+    } catch (fallbackError) {
+      console.error('❌ Erro ao criar linha reta principal:', fallbackError);
     }
-  }, []);
+  }, [decodePolyline]);
 
 
 
@@ -319,12 +454,18 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
               const statusText = foiEntregue ? '✅ ENTREGUE' : '📦 Pendente';
               console.log(`🎯 Resultado: ${foiEntregue ? 'ENTREGUE' : 'PENDENTE'} para ND ${destino.nd}`);
               
+              // Verificar se é o próximo destino não entregue
+              const proximoDestino = getProximoDestinoNaoEntregue(device);
+              const isProximoDestino = proximoDestino && proximoDestino.nd === destino.nd;
+              
               const destinoMarker = L.marker([destino.lat, destino.lng], { icon: iconToUse })
                 .bindPopup(`
                   <strong>${device.name} - Destino ${index + 1}</strong><br>
                   ${destino.endereco ? `Endereço: ${destino.endereco}<br>` : ''}
                   ${destino.nd ? `ND: ${destino.nd}<br>` : ''}
-                  <strong>Status: ${statusText}</strong>
+                  <strong>Status: ${statusText}</strong><br>
+                  ${isProximoDestino ? '<span style="color: #1E90FF; font-weight: bold;">📍 PRÓXIMO DESTINO</span>' : ''}
+                  ${foiEntregue ? '<span style="color: #666; font-style: italic;">🚫 Não será roteado</span>' : ''}
                 `)
                 .addTo(mapInstanceRef.current!);
               deviceMarkers.push(destinoMarker);
@@ -340,16 +481,29 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
 
       // Buscar e desenhar rota planejada se origem e destinos existem
       if (device.origem && device.destinos && device.destinos.length > 0) {
-        const firstDestino = device.destinos[0];
-        const routeKey = `${device.origem.lat}-${device.origem.lng}-${firstDestino.lat}-${firstDestino.lng}`;
-        const lastRouteKey = lastStateRef.current.get(device.deviceId)?.routeKey;
+        // Encontrar primeiro destino não entregue
+        const firstDestinoNaoEntregue = device.destinos.find(destino => !isNFEntregue(device, destino.nd));
         
-        if (routeKey !== lastRouteKey) {
-          fetchRoute(device.origem, firstDestino, device.deviceId);
-          if (!lastStateRef.current.has(device.deviceId)) {
-            lastStateRef.current.set(device.deviceId, {});
+        if (firstDestinoNaoEntregue) {
+          const routeKey = `${device.origem.lat}-${device.origem.lng}-${firstDestinoNaoEntregue.lat}-${firstDestinoNaoEntregue.lng}`;
+          const lastRouteKey = lastStateRef.current.get(device.deviceId)?.routeKey;
+          
+          if (routeKey !== lastRouteKey) {
+            console.log(`🎯 Traçando rota principal para primeiro destino não entregue (ND: ${firstDestinoNaoEntregue.nd})`);
+            fetchRoute(device.origem, firstDestinoNaoEntregue, device.deviceId);
+            if (!lastStateRef.current.has(device.deviceId)) {
+              lastStateRef.current.set(device.deviceId, {});
+            }
+            lastStateRef.current.get(device.deviceId).routeKey = routeKey;
           }
-          lastStateRef.current.get(device.deviceId).routeKey = routeKey;
+        } else {
+          // Todos os destinos foram entregues - remover rota principal
+          const existingRoute = routePolylinesRef.current.get(device.deviceId);
+          if (existingRoute && mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(existingRoute);
+            routePolylinesRef.current.delete(device.deviceId);
+            console.log(`✅ Todos os destinos entregues - rota principal removida para ${device.name}`);
+          }
         }
       }
 
@@ -401,54 +555,164 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     });
 
     // Zoom automático removido conforme solicitado
-  }, [devices, isLoaded, createSegments, fetchRoute, isNFEntregue]);
+  }, [devices, isLoaded, createSegments, fetchRoute, isNFEntregue, getProximoDestinoNaoEntregue]);
 
-  // useEffect separado para rotas entre destinos consecutivos
+  // Função para buscar rota entre destinos consecutivos com múltiplas APIs
+  const fetchDestinationRoute = useCallback(async (start: Location, end: Location, routeKey: string, routeColor: string, dashArray: string) => {
+    // Validar coordenadas
+    if (!start.lat || !start.lng || !end.lat || !end.lng) {
+      console.warn('Coordenadas inválidas para rota entre destinos:', { start, end });
+      return;
+    }
+
+    const routeIndex = parseInt(routeKey.split('-dest-')[1]) || 0;
+    
+    // Tentar apenas os provedores mais confiáveis para rotas secundárias
+    const secondaryProviders = routeProviders.slice(0, 2); // Mapbox e OpenRouteService primeiro
+    
+    for (let i = 0; i < secondaryProviders.length; i++) {
+      const provider = secondaryProviders[i];
+      
+      try {
+        // Delay progressivo para evitar rate limiting
+        const delay = 600 + (routeIndex * 400) + (i * 200);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        const url = provider.url(start, end);
+        console.log(`🔗 Tentando ${provider.name} para rota ${routeKey}:`, url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'RastreamentoAdidas/1.0'
+          }
+        });
+        
+        if (!response.ok) {
+          console.warn(`⚠️ ${provider.name} retornou ${response.status} para ${routeKey}`);
+          continue;
+        }
+        
+        const data = await response.json();
+        
+        // Processar coordenadas
+        let coords = null;
+        if (provider.name === 'GraphHopper' && data.paths?.[0]?.points) {
+          coords = provider.parseCoords(data, decodePolyline);
+        } else {
+          coords = provider.parseCoords(data, decodePolyline);
+        }
+        
+        if (coords && coords.length > 0) {
+          // Remover rota anterior se existir
+          const existingRoute = routePolylinesRef.current.get(routeKey);
+          if (existingRoute && mapInstanceRef.current) {
+            mapInstanceRef.current.removeLayer(existingRoute);
+          }
+          
+          // Adicionar nova rota entre destinos
+          if (mapInstanceRef.current) {
+            const polyline = L.polyline(coords, {
+              color: routeColor,
+              weight: 4,
+              opacity: 0.8,
+              dashArray: dashArray
+            }).addTo(mapInstanceRef.current);
+            routePolylinesRef.current.set(routeKey, polyline);
+            console.log(`✅ Rota ${routeKey} obtida via ${provider.name} (${routeColor})`);
+            return; // Sucesso!
+          }
+        } else {
+          console.warn(`⚠️ ${provider.name} não retornou coordenadas para ${routeKey}`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro no ${provider.name} para ${routeKey}:`, error instanceof Error ? error.message : error);
+        continue;
+      }
+    }
+    
+    // Fallback: criar linha reta se todos falharam
+    console.log(`🔄 Criando linha reta como fallback para ${routeKey}...`);
+    try {
+      if (mapInstanceRef.current) {
+        const existingRoute = routePolylinesRef.current.get(routeKey);
+        if (existingRoute) {
+          mapInstanceRef.current.removeLayer(existingRoute);
+        }
+        
+        const straightLine = L.polyline([[start.lat, start.lng], [end.lat, end.lng]], {
+          color: routeColor,
+          weight: 3,
+          opacity: 0.6,
+          dashArray: dashArray || '15, 10' // Linha mais tracejada para fallback
+        }).addTo(mapInstanceRef.current);
+        routePolylinesRef.current.set(routeKey, straightLine);
+        console.log(`✅ Linha reta criada como fallback para ${routeKey}`);
+      }
+    } catch (fallbackError) {
+      console.error(`❌ Erro ao criar linha reta entre destinos ${routeKey}:`, fallbackError);
+    }
+  }, [decodePolyline]);
+
+  // useEffect separado para rotas entre destinos consecutivos (apenas não entregues)
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return;
 
+    console.log('🗺️ Processando rotas entre destinos não entregues...');
+
     devices.forEach(async (device) => {
-      if (device.destinos && device.destinos.length > 1) {
-        for (let i = 0; i < device.destinos.length - 1; i++) {
-          const start = device.destinos[i];
-          const end = device.destinos[i + 1];
-
-          // Verificar se ambos os destinos foram entregues
-          const startEntregue = isNFEntregue(device, start.nd);
-          const endEntregue = isNFEntregue(device, end.nd);
-          
-          // Definir cor da rota baseado no status de entrega
-          let routeColor = 'purple'; // Padrão para rotas pendentes
-          if (startEntregue && endEntregue) {
-            routeColor = '#00C851'; // Verde para rotas onde ambos destinos foram entregues
-          } else if (startEntregue || endEntregue) {
-            routeColor = '#FF9800'; // Laranja para rotas parcialmente entregues
-          }
-
-          try {
-            const response = await fetch(
-              `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`
-            );
-            const data = await response.json();
-            if (data.routes?.[0]?.geometry?.coordinates) {
-              const coords = data.routes[0].geometry.coordinates.map(
-                ([lng, lat]: [number, number]) => [lat, lng]
-              );
-              const polyline = L.polyline(coords, {
-                color: routeColor,
-                weight: 4,
-                opacity: 0.7,
-                dashArray: startEntregue && endEntregue ? '0' : '10, 5' // Linha sólida se entregue, tracejada se pendente
-              }).addTo(mapInstanceRef.current!);
-              routePolylinesRef.current.set(`${device.deviceId}-dest-${i}`, polyline);
-            }
-          } catch (error) {
-            console.error('Erro ao buscar rota entre destinos:', error);
-          }
+      // Primeiro, limpar todas as rotas existentes entre destinos
+      for (let i = 0; i < 20; i++) { // Limpar até 20 possíveis rotas
+        const routeKey = `${device.deviceId}-dest-${i}`;
+        const existingRoute = routePolylinesRef.current.get(routeKey);
+        if (existingRoute && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(existingRoute);
+          routePolylinesRef.current.delete(routeKey);
         }
       }
+
+      if (device.destinos && device.destinos.length > 1) {
+        // Filtrar apenas destinos não entregues
+        const destinosNaoEntregues = device.destinos.filter(destino => !isNFEntregue(device, destino.nd));
+        
+        console.log(`🔗 Destinos não entregues para ${device.name}:`, destinosNaoEntregues.length);
+        console.log(`📦 Detalhes dos destinos não entregues:`, destinosNaoEntregues.map(d => ({ nd: d.nd, endereco: d.endereco })));
+        
+        if (destinosNaoEntregues.length > 1) {
+          // Criar rotas apenas entre destinos não entregues consecutivos
+          for (let i = 0; i < destinosNaoEntregues.length - 1; i++) {
+            const start = destinosNaoEntregues[i];
+            const end = destinosNaoEntregues[i + 1];
+            const routeKey = `${device.deviceId}-pending-${i}`;
+
+            // Verificar se ambos os destinos não foram entregues (redundante mas para segurança)
+            const startEntregue = isNFEntregue(device, start.nd);
+            const endEntregue = isNFEntregue(device, end.nd);
+            
+            console.log(`📦 Rota pendente ${i + 1} → ${i + 2}: ${start.nd} (${startEntregue ? 'ENTREGUE' : 'PENDENTE'}) → ${end.nd} (${endEntregue ? 'ENTREGUE' : 'PENDENTE'})`);
+            
+            if (!startEntregue && !endEntregue) {
+              // Definir cor da rota para destinos pendentes
+              const routeColor = '#8A2BE2'; // Roxo para rotas entre destinos pendentes
+              const dashArray = '10, 5'; // Tracejada
+
+              console.log(`🎨 Criando rota pendente ${i + 1}→${i + 2}: ${start.nd} → ${end.nd} (${routeColor})`);
+
+              // Buscar rota com delay
+              await fetchDestinationRoute(start, end, routeKey, routeColor, dashArray);
+            } else {
+              console.log(`⚠️ Pulando rota ${i + 1}→${i + 2} pois um dos destinos já foi entregue`);
+            }
+          }
+        } else {
+          console.log(`✅ ${device.name}: ${destinosNaoEntregues.length <= 1 ? 'Nenhum ou apenas 1 destino pendente' : 'Todos os destinos foram entregues'}`);
+        }
+      } else {
+        console.log(`⚠️ Dispositivo ${device.name} não tem destinos suficientes para rotas`);
+      }
     });
-  }, [devices, isLoaded, isNFEntregue]);
+  }, [devices, isLoaded, isNFEntregue, fetchDestinationRoute]);
 
 
 
@@ -514,6 +778,32 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
             borderRadius: '2px'
           }}></div>
           <span>Posição Atual</span>
+        </div>
+        
+        <div style={{ marginTop: '12px', marginBottom: '8px', fontWeight: 'bold', fontSize: '12px', color: '#666' }}>
+          🛣️ Rotas (Multi-API):
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+          <div style={{ 
+            width: '20px', 
+            height: '3px', 
+            backgroundColor: '#1E90FF', 
+            marginRight: '8px'
+          }}></div>
+          <span style={{ fontSize: '13px' }}>Origem → Próximo Destino</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ 
+            width: '20px', 
+            height: '3px', 
+            backgroundColor: '#8A2BE2', 
+            marginRight: '8px'
+          }}></div>
+          <span style={{ fontSize: '13px' }}>Entre Destinos Pendentes</span>
+        </div>
+        
+        <div style={{ marginTop: '12px', marginBottom: '6px', fontSize: '11px', color: '#888', fontStyle: 'italic' }}>
+          ⚠️ Rotas pulam destinos entregues
         </div>
       </div>
 

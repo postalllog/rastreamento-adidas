@@ -396,16 +396,24 @@ app.prepare().then(() => {
         const existingNfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
         
         if (existingNfIndex >= 0) {
+          const oldStatus = device.nfs[existingNfIndex].status;
           device.nfs[existingNfIndex] = {
             ...device.nfs[existingNfIndex],
             status: data.status,
+            statusCode: data.statusCode || null,
             timestamp: data.timestamp || Date.now()
           };
-          console.log(`✅ NF ${data.nd} atualizada: ${data.status}`);
+          console.log(`✅ NF ${data.nd} atualizada: ${oldStatus} → ${data.status}`);
+          
+          // Se mudou para entregue, logar para roteamento inteligente
+          if (data.status === 'delivered' || data.status === 'entregue' || data.status === 'concluido') {
+            console.log(`🎯 NF ${data.nd} marcada como entregue - sistema de roteamento será atualizado`);
+          }
         } else {
           device.nfs.push({
             nd: data.nd,
             status: data.status,
+            statusCode: data.statusCode || null,
             timestamp: data.timestamp || Date.now(),
             nfe: data.nfe || null,
             destinatario: data.destinatario || null,
@@ -433,10 +441,73 @@ app.prepare().then(() => {
             nfData: data,
             timestamp: Date.now()
           });
+          
+          // Evento específico para recálculo de rotas quando NF for entregue
+          if (data.status === 'delivered' || data.status === 'entregue' || data.status === 'concluido') {
+            webSocket.emit("route-recalculation-needed", {
+              deviceId,
+              deliveredND: data.nd,
+              timestamp: Date.now()
+            });
+            console.log(`🗺️ Solicitando recálculo de rotas para ${deviceId} (NF ${data.nd} entregue)`);
+          }
         }
       });
       
       console.log('📤 Status de NF enviado para', webClients.size, 'clientes web');
+    })
+
+    // Novo listener para baixa de NF (evento específico do mobile)
+    socket.on("nf-baixa", (data) => {
+      console.log('📋 ===== NF-BAIXA RECEBIDO =====');
+      console.log('Baixa NF:', JSON.stringify(data, null, 2));
+      
+      const deviceId = data.deviceId || socket.id;
+      
+      // Processar baixa da NF
+      if (devices.has(deviceId)) {
+        const device = devices.get(deviceId);
+        if (!device.nfs) device.nfs = [];
+        
+        // Atualizar NF com informações da baixa
+        const nfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
+        if (nfIndex >= 0) {
+          device.nfs[nfIndex] = {
+            ...device.nfs[nfIndex],
+            status: data.status,
+            statusCode: data.statusCode,
+            baixaLocation: data.location,
+            baixaTimestamp: data.timestamp || Date.now()
+          };
+          console.log(`📋 Baixa registrada para NF ${data.nd}: código ${data.statusCode} (${data.status})`);
+        }
+      }
+      
+      // Enviar confirmação de baixa para o mobile
+      const mobileSocket = io.sockets.sockets.get(socket.id);
+      if (mobileSocket) {
+        mobileSocket.emit("nf-baixa-confirmed", {
+          nd: data.nd,
+          statusCode: data.statusCode,
+          status: data.status,
+          timestamp: Date.now(),
+          success: true
+        });
+      }
+      
+      // Enviar para clientes web
+      webClients.forEach(webClientId => {
+        const webSocket = io.sockets.sockets.get(webClientId);
+        if (webSocket) {
+          webSocket.emit("nf-baixa-notification", {
+            deviceId,
+            baixaData: data,
+            timestamp: Date.now()
+          });
+        }
+      });
+      
+      console.log(`📤 Baixa da NF ${data.nd} processada e enviada para clientes web`);
     })
 
     // Listener para atualizações de entrega
