@@ -161,12 +161,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
         `https://api.mapbox.com/directions/v5/mapbox/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?geometries=geojson&access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`,
       parseCoords: (data: any) => data.routes?.[0]?.geometry?.coordinates?.map(([lng, lat]: [number, number]) => [lat, lng])
     },
-    {
-      name: 'OpenRouteService',
-      url: (origem: Location, destino: Location) => 
-        `https://api.openrouteservice.org/v2/directions/driving-car?start=${origem.lng},${origem.lat}&end=${destino.lng},${destino.lat}`,
-      parseCoords: (data: any) => data.features?.[0]?.geometry?.coordinates?.map(([lng, lat]: [number, number]) => [lat, lng])
-    },
+
     {
       name: 'OSRM',
       url: (origem: Location, destino: Location) => 
@@ -225,6 +220,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     }
 
     const routeKey = `main-${deviceId}`;
+    console.log(`🗺️ Sistema multi-API ativo: ${routeProviders.map(p => p.name).join(', ')} (${routeProviders.length} provedores)`);
     
     // Tentar cada provedor em sequência
     for (let i = 0; i < routeProviders.length; i++) {
@@ -568,7 +564,7 @@ export function TrackingMap({ devices, center }: TrackingMapProps) {
     const routeIndex = parseInt(routeKey.split('-dest-')[1]) || 0;
     
     // Tentar apenas os provedores mais confiáveis para rotas secundárias
-    const secondaryProviders = routeProviders.slice(0, 2); // Mapbox e OpenRouteService primeiro
+    const secondaryProviders = routeProviders.slice(0, 2); // Mapbox e OSRM primeiro
     
     for (let i = 0; i < secondaryProviders.length; i++) {
       const provider = secondaryProviders[i];
