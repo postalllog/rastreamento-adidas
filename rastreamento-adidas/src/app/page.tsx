@@ -129,6 +129,37 @@ export default function HomePage() {
       }
     });
 
+    // 📋 EVENTOS DE BAIXA DE NF
+    socket.on('nf-baixa-notification', (data) => {
+      console.log('📋 ===== BAIXA DE NF RECEBIDA NO PAINEL =====');
+      console.log('📋 Dados da baixa:', data);
+      
+      setTrackingStatus(`NF ${data.baixaData.nd} baixada - Status: ${data.baixaData.status}`);
+      
+      // Forçar atualização dos dados dos dispositivos
+      socket.emit('get-all-devices-data');
+    });
+
+    socket.on('nf-status-update', (data) => {
+      console.log('📦 ===== STATUS DE NF ATUALIZADO =====');
+      console.log('📦 Dados do status:', data);
+      
+      setTrackingStatus(`NF ${data.nfData.nd} - Status: ${data.nfData.status}`);
+      
+      // Forçar atualização dos dados dos dispositivos
+      socket.emit('get-all-devices-data');
+    });
+
+    socket.on('route-recalculation-needed', (data) => {
+      console.log('🗺️ ===== RECÁLCULO DE ROTA NECESSÁRIO =====');
+      console.log('🗺️ NF entregue:', data.deliveredND);
+      
+      setTrackingStatus(`Rota recalculada - NF ${data.deliveredND} entregue`);
+      
+      // Forçar atualização dos dados dos dispositivos
+      socket.emit('get-all-devices-data');
+    });
+
     return () => {
       socket.disconnect();
     }

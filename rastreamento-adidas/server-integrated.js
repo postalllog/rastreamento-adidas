@@ -670,6 +670,16 @@ app.prepare().then(() => {
       console.log('📤 Dados de', devices.size, 'aparelhos reenviados para', webClients.size, 'clientes web')
     })
 
+    // Listener para solicitar atualização de dados (usado pelo painel após baixas)
+    socket.on("get-all-devices-data", () => {
+      console.log('🔄 ===== SOLICITAÇÃO DE ATUALIZAÇÃO DE DADOS =====')
+      
+      const allDevicesData = getAllDevicesData()
+      socket.emit("all-devices-data", allDevicesData)
+      
+      console.log('📤 Dados atualizados enviados para cliente solicitante')
+    })
+
     socket.on("disconnect", () => {
       console.log('❌ Cliente desconectado:', socket.id)
       
