@@ -26,53 +26,135 @@ function generateGoogleMapsLink(lat, lng, deviceName) {
   return `https://www.google.com/maps?q=${lat},${lng}&t=m&z=15&marker=${encodeURIComponent(deviceName)}`
 }
 
+// Função auxiliar para broadcast para clientes web
+function broadcastToWebClients(event, data) {
+  webClients.forEach(webClientId => {
+    const webSocket = io.sockets.sockets.get(webClientId)
+    if (webSocket) webSocket.emit(event, data)
+  })
+}
+
+// Função auxiliar para criar dispositivo padrão
+function createDevice(deviceId, deviceName) {
+  const colorIndex = devices.size % deviceColors.length
+  const newDevice = {
+    positions: [],
+    origem: null,
+    destinos: [],
+    nfs: [],
+    entregas: [],
+    color: deviceColors[colorIndex],
+    lastUpdate: Date.now(),
+    name: deviceName || `Aparelho ${devices.size + 1}`
+  }
+  devices.set(deviceId, newDevice)
+  startBackupInterval(deviceId, newDevice)
+  return newDevice
+}
+
+// Função auxiliar para processar destinos
+function processDestinos(destinos) {
+  return destinos
+    .filter(dest => dest !== null && dest !== undefined)
+    .map(dest => {
+      // Formato do mobile: [lat, lng, {endereco, nd}]
+      if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+        return {
+          lat: dest[0],
+          lng: dest[1],
+          endereco: dest[2]?.endereco || null,
+          nd: dest[2]?.nd || null
+        }
+      }
+      // Formato padrão: {latitude, longitude}
+      if (dest?.latitude && dest?.longitude && 
+          typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
+          !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
+        return {
+          lat: dest.latitude,
+          lng: dest.longitude,
+          endereco: dest.endereco || null,
+          nd: dest.nd || null
+        }
+      }
+      // Formato simples: [lat, lng]
+      if (Array.isArray(dest) && dest.length >= 2 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
+        return { lat: dest[0], lng: dest[1] }
+      }
+      console.warn('⚠️ Destino inválido ignorado:', dest)
+      return null
+    })
+    .filter(dest => dest !== null)
+}
+
+// Função auxiliar para obter dados de todos os dispositivos
+function getAllDevicesData() {
+  return {
+    devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
+      deviceId: id,
+      ...deviceData,
+      routeData: deviceRoutes.get(id) || null
+    }))
+  }
+}
+
+// Função auxiliar para atualizar NF no dispositivo
+function updateNFInDevice(deviceId, nfData) {
+  if (!devices.has(deviceId)) return false
+  
+  const device = devices.get(deviceId)
+  if (!device.nfs) device.nfs = []
+  
+  const existingNfIndex = device.nfs.findIndex(nf => nf.nd === nfData.nd)
+  
+  if (existingNfIndex >= 0) {
+    const oldStatus = device.nfs[existingNfIndex].status
+    device.nfs[existingNfIndex] = {
+      ...device.nfs[existingNfIndex],
+      ...nfData,
+      timestamp: nfData.timestamp || Date.now()
+    }
+    console.log(`✅ NF ${nfData.nd} atualizada: ${oldStatus} → ${nfData.status}`)
+  } else {
+    device.nfs.push({
+      ...nfData,
+      timestamp: nfData.timestamp || Date.now(),
+      nfe: nfData.nfe || null,
+      destinatario: nfData.destinatario || null,
+      endereco: nfData.endereco || null
+    })
+    console.log(`📦 Nova NF ${nfData.nd} adicionada: ${nfData.status}`)
+  }
+  
+  return true
+}
+
 // Função para criar log de backup
 function createBackupLog(deviceId, device, isOffline = false) {
   if (device.positions.length === 0) return
   
   const lastPosition = device.positions[device.positions.length - 1]
-  const googleMapsLink = generateGoogleMapsLink(
-    lastPosition.lat, 
-    lastPosition.lng, 
-    device.name
-  )
-  
-  if (!backupLogs.has(deviceId)) {
-    backupLogs.set(deviceId, [])
-  }
-  
   const logEntry = {
     timestamp: Date.now(),
     position: { lat: lastPosition.lat, lng: lastPosition.lng },
-    googleMapsLink,
+    googleMapsLink: generateGoogleMapsLink(lastPosition.lat, lastPosition.lng, device.name),
     isOffline,
     deviceName: device.name
   }
   
-  backupLogs.get(deviceId).push(logEntry)
+  if (!backupLogs.has(deviceId)) backupLogs.set(deviceId, [])
   
-  // Manter apenas últimos 50 logs
-  if (backupLogs.get(deviceId).length > 50) {
-    backupLogs.get(deviceId) = backupLogs.get(deviceId).slice(-50)
-  }
+  const logs = backupLogs.get(deviceId)
+  logs.push(logEntry)
+  if (logs.length > 50) logs.splice(0, logs.length - 50) // Mais eficiente que slice
   
   console.log(`📋 Backup log criado para ${device.name}:`, {
     isOffline: isOffline ? '🔴 OFFLINE' : '🟢 ONLINE',
-    link: googleMapsLink
+    link: logEntry.googleMapsLink
   })
   
   // Enviar logs para clientes web
-  const allBackupLogs = {
-    deviceId,
-    logs: backupLogs.get(deviceId)
-  }
-  
-  webClients.forEach(webClientId => {
-    const webSocket = io.sockets.sockets.get(webClientId)
-    if (webSocket) {
-      webSocket.emit("backup-logs", allBackupLogs)
-    }
-  })
+  broadcastToWebClients("backup-logs", { deviceId, logs })
 }
 
 // Função para iniciar backup automático
@@ -155,70 +237,29 @@ app.prepare().then(() => {
       }
     })
 
-    // Novo listener para dados de rota
+    // Listener para dados de rota
     socket.on("route-data", (routeData) => {
-      console.log('📍 ===== ROUTE-DATA RECEBIDO =====');
-      console.log('RouteData completo:', JSON.stringify(routeData, null, 2));
+      console.log('📍 ===== ROUTE-DATA RECEBIDO =====')
       
       const deviceId = routeData.deviceId || socket.id
       deviceRoutes.set(deviceId, routeData)
       
       // Criar dispositivo se não existir
       if (!devices.has(deviceId)) {
-        const colorIndex = devices.size % deviceColors.length
-        const newDevice = {
-          positions: [],
-          origem: null,
-          destinos: [],
-          nfs: [], // Array para armazenar NFs
-          entregas: [], // Array para armazenar entregas
-          color: deviceColors[colorIndex],
-          lastUpdate: Date.now(),
-          name: `Aparelho ${devices.size + 1}`
-        }
-        devices.set(deviceId, newDevice)
-        startBackupInterval(deviceId, newDevice)
-        console.log(`📱 Dispositivo ${newDevice.name} criado via route-data`)
+        createDevice(deviceId)
+        console.log(`📱 Dispositivo criado via route-data`)
       }
       
-      // Extrair destinos da rota e aplicar ao dispositivo
+      const device = devices.get(deviceId)
+      
+      // Processar destinos da rota
       if (routeData.destinos) {
-        const device = devices.get(deviceId)
-        console.log('🎯 Aplicando destinos da rota ao dispositivo:', routeData.destinos)
-        device.destinos = routeData.destinos
-          .filter(dest => dest !== null && dest !== undefined)
-          .map((dest, index) => {
-            // Formato do mobile: [lat, lng, {endereco, nd}]
-            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
-              return {
-                lat: dest[0],
-                lng: dest[1],
-                endereco: dest[2]?.endereco || null,
-                nd: dest[2]?.nd || null
-              }
-            }
-            // Formato padrão: {latitude, longitude}
-            else if (dest && dest.latitude && dest.longitude && 
-                typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
-                !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
-              return {
-                lat: dest.latitude,
-                lng: dest.longitude,
-                endereco: dest.endereco || null,
-                nd: dest.nd || null
-              }
-            }
-            console.warn(`⚠️ Destino inválido ignorado:`, dest);
-            return null;
-          })
-          .filter(dest => dest !== null);
+        device.destinos = processDestinos(routeData.destinos)
         console.log(`✅ ${device.destinos.length} destinos aplicados ao dispositivo ${device.name}`)
       }
       
-      // Extrair e processar NFs da rota
-      if (routeData.nfs && Array.isArray(routeData.nfs)) {
-        const device = devices.get(deviceId)
-        console.log('📦 Aplicando NFs da rota ao dispositivo:', routeData.nfs)
+      // Processar NFs da rota
+      if (routeData.nfs?.length) {
         device.nfs = routeData.nfs.map(nf => ({
           nd: nf.nd,
           nfe: nf.nfe || null,
@@ -228,98 +269,37 @@ app.prepare().then(() => {
           timestamp: nf.timestamp || Date.now()
         }))
         console.log(`✅ ${device.nfs.length} NFs aplicadas ao dispositivo ${device.name}`)
-        
-        // Reenviar dados atualizados para clientes web
-        const allDevicesData = {
-          devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
-            deviceId: id,
-            ...deviceData,
-            routeData: deviceRoutes.get(id) || null
-          }))
-        }
-        
-        webClients.forEach(webClientId => {
-          const webSocket = io.sockets.sockets.get(webClientId)
-          if (webSocket) {
-            webSocket.emit("all-devices-data", allDevicesData)
-          }
-        })
       }
       
-      // Enviar dados da rota para clientes web
-      webClients.forEach(webClientId => {
-        const webSocket = io.sockets.sockets.get(webClientId)
-        if (webSocket) {
-          webSocket.emit("route-received", {
-            deviceId,
-            routeData
-          })
-        }
-      })
+      // Enviar dados atualizados para clientes web
+      const allDevicesData = getAllDevicesData()
+      broadcastToWebClients("all-devices-data", allDevicesData)
+      broadcastToWebClients("route-received", { deviceId, routeData })
       
       console.log('📤 Dados de rota enviados para', webClients.size, 'clientes web')
     })
 
     // Listener para início de rastreamento
     socket.on("tracking-started", (data) => {
-      console.log('🚀 ===== TRACKING-STARTED RECEBIDO =====');
-      console.log('Tracking-started completo:', JSON.stringify(data, null, 2));
+      console.log('🚀 ===== TRACKING-STARTED RECEBIDO =====')
       
       const deviceId = data.deviceId || socket.id
       
       // Criar dispositivo se não existir
       if (!devices.has(deviceId)) {
-        const colorIndex = devices.size % deviceColors.length
-        const newDevice = {
-          positions: [],
-          origem: null,
-          destinos: [],
-          nfs: [], // Array para armazenar NFs
-          entregas: [], // Array para armazenar entregas
-          color: deviceColors[colorIndex],
-          lastUpdate: Date.now(),
-          name: data.deviceName || `Aparelho ${devices.size + 1}`
-        }
-        devices.set(deviceId, newDevice)
-        startBackupInterval(deviceId, newDevice)
-        console.log(`📱 Dispositivo ${newDevice.name} criado via tracking-started`)
+        createDevice(deviceId, data.deviceName)
+        console.log(`📱 Dispositivo criado via tracking-started`)
       }
       
-      // Se há dados de rota, aplicar destinos ao dispositivo
-      if (data.routeData && data.routeData.destinos) {
-        const device = devices.get(deviceId)
-        console.log('🎯 Aplicando destinos do tracking-started:', data.routeData.destinos)
-        device.destinos = data.routeData.destinos
-          .filter(dest => dest !== null && dest !== undefined)
-          .map((dest, index) => {
-            // Formato do mobile: [lat, lng, {endereco, nd}]
-            if (Array.isArray(dest) && dest.length >= 3 && typeof dest[0] === 'number' && typeof dest[1] === 'number') {
-              return {
-                lat: dest[0],
-                lng: dest[1],
-                endereco: dest[2]?.endereco || null,
-                nd: dest[2]?.nd || null
-              }
-            }
-            // Formato padrão: {latitude, longitude}
-            else if (dest && dest.latitude && dest.longitude && 
-                typeof dest.latitude === 'number' && typeof dest.longitude === 'number' &&
-                !isNaN(dest.latitude) && !isNaN(dest.longitude)) {
-              return {
-                lat: dest.latitude,
-                lng: dest.longitude,
-                endereco: dest.endereco || null,
-                nd: dest.nd || null
-              }
-            }
-            console.warn(`⚠️ Destino inválido ignorado:`, dest);
-            return null;
-          })
-          .filter(dest => dest !== null);
+      const device = devices.get(deviceId)
+      
+      // Processar dados de rota se existirem
+      if (data.routeData?.destinos) {
+        device.destinos = processDestinos(data.routeData.destinos)
         console.log(`✅ ${device.destinos.length} destinos aplicados via tracking-started`)
         
-        // Processar NFs se estiverem presentes nos dados da rota
-        if (data.routeData.nfs && Array.isArray(data.routeData.nfs)) {
+        // Processar NFs se estiverem presentes
+        if (data.routeData.nfs?.length) {
           device.nfs = data.routeData.nfs.map(nf => ({
             nd: nf.nd,
             nfe: nf.nfe || null,
@@ -331,32 +311,15 @@ app.prepare().then(() => {
           console.log(`✅ ${device.nfs.length} NFs aplicadas via tracking-started`)
         }
         
-        // Reenviar dados atualizados para clientes web
-        const allDevicesData = {
-          devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
-            deviceId: id,
-            ...deviceData,
-            routeData: deviceRoutes.get(id) || null
-          }))
-        }
-        
-        webClients.forEach(webClientId => {
-          const webSocket = io.sockets.sockets.get(webClientId)
-          if (webSocket) {
-            webSocket.emit("all-devices-data", allDevicesData)
-          }
-        })
+        // Enviar dados atualizados para clientes web
+        broadcastToWebClients("all-devices-data", getAllDevicesData())
       }
       
-      webClients.forEach(webClientId => {
-        const webSocket = io.sockets.sockets.get(webClientId)
-        if (webSocket) {
-          webSocket.emit("tracking-status", { 
-            status: 'started', 
-            data,
-            timestamp: Date.now()
-          })
-        }
+      // Enviar status de rastreamento
+      broadcastToWebClients("tracking-status", { 
+        status: 'started', 
+        data,
+        timestamp: Date.now()
       })
       
       console.log('📤 Status de rastreamento (iniciado) enviado para', webClients.size, 'clientes web')
@@ -382,89 +345,89 @@ app.prepare().then(() => {
 
     // Listener para mudanças de status de NF
     socket.on("nf-status-changed", (data) => {
-      console.log('📦 ===== NF-STATUS-CHANGED RECEBIDO =====');
-      console.log('Status NF:', JSON.stringify(data, null, 2));
+      console.log('📦 ===== NF-STATUS-CHANGED RECEBIDO =====')
       
-      const deviceId = data.deviceId || socket.id;
+      const deviceId = data.deviceId || socket.id
+      const updated = updateNFInDevice(deviceId, {
+        nd: data.nd,
+        status: data.status,
+        statusCode: data.statusCode || null
+      })
       
-      // Atualizar status da NF no dispositivo
-      if (devices.has(deviceId)) {
-        const device = devices.get(deviceId);
-        if (!device.nfs) device.nfs = [];
-        
-        // Encontrar e atualizar NF existente ou adicionar nova
-        const existingNfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
-        
-        if (existingNfIndex >= 0) {
-          const oldStatus = device.nfs[existingNfIndex].status;
-          device.nfs[existingNfIndex] = {
-            ...device.nfs[existingNfIndex],
-            status: data.status,
-            statusCode: data.statusCode || null,
-            timestamp: data.timestamp || Date.now()
-          };
-          console.log(`✅ NF ${data.nd} atualizada: ${oldStatus} → ${data.status}`);
-          
-          // Se mudou para entregue, logar para roteamento inteligente
-          if (data.status === 'delivered' || data.status === 'entregue' || data.status === 'concluido') {
-            console.log(`🎯 NF ${data.nd} marcada como entregue - sistema de roteamento será atualizado`);
-          }
-        } else {
-          device.nfs.push({
-            nd: data.nd,
-            status: data.status,
-            statusCode: data.statusCode || null,
-            timestamp: data.timestamp || Date.now(),
-            nfe: data.nfe || null,
-            destinatario: data.destinatario || null,
-            endereco: data.endereco || null
-          });
-          console.log(`📦 Nova NF ${data.nd} adicionada: ${data.status}`);
+      if (updated) {
+        // Verificar se é entrega para roteamento inteligente
+        const isDelivered = ['delivered', 'entregue', 'concluido'].includes(data.status)
+        if (isDelivered) {
+          console.log(`🎯 NF ${data.nd} marcada como entregue - sistema de roteamento será atualizado`)
         }
-      }
-      
-      // Reenviar dados atualizados para clientes web
-      const allDevicesData = {
-        devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
-          deviceId: id,
-          ...deviceData,
-          routeData: deviceRoutes.get(id) || null
-        }))
-      };
-      
-      webClients.forEach(webClientId => {
-        const webSocket = io.sockets.sockets.get(webClientId);
-        if (webSocket) {
-          webSocket.emit("all-devices-data", allDevicesData);
-          webSocket.emit("nf-status-update", {
+        
+        // Enviar dados atualizados para clientes web
+        const allDevicesData = getAllDevicesData()
+        broadcastToWebClients("all-devices-data", allDevicesData)
+        broadcastToWebClients("nf-status-update", {
+          deviceId,
+          nfData: data,
+          timestamp: Date.now()
+        })
+        
+        // Evento para recálculo de rotas se NF foi entregue
+        if (isDelivered) {
+          broadcastToWebClients("route-recalculation-needed", {
             deviceId,
-            nfData: data,
+            deliveredND: data.nd,
             timestamp: Date.now()
-          });
-          
-          // Evento específico para recálculo de rotas quando NF for entregue
-          if (data.status === 'delivered' || data.status === 'entregue' || data.status === 'concluido') {
-            webSocket.emit("route-recalculation-needed", {
-              deviceId,
-              deliveredND: data.nd,
-              timestamp: Date.now()
-            });
-            console.log(`🗺️ Solicitando recálculo de rotas para ${deviceId} (NF ${data.nd} entregue)`);
-          }
+          })
+          console.log(`🗺️ Solicitando recálculo de rotas para ${deviceId} (NF ${data.nd} entregue)`)
         }
-      });
-      
-      console.log('📤 Status de NF enviado para', webClients.size, 'clientes web');
+        
+        console.log('📤 Status de NF enviado para', webClients.size, 'clientes web')
+      }
     })
 
     // Novo listener para baixa de NF (evento específico do mobile)
     socket.on("nf-baixa", (data) => {
-      console.log('📋 ===== NF-BAIXA RECEBIDO =====');
-      console.log('Baixa NF:', JSON.stringify(data, null, 2));
+      console.log('📋 ===== NF-BAIXA RECEBIDO =====')
+      
+      const deviceId = data.deviceId || socket.id
+      const updated = updateNFInDevice(deviceId, {
+        nd: data.nd,
+        status: data.status,
+        statusCode: data.statusCode,
+        baixaLocation: data.location,
+        baixaTimestamp: data.timestamp || Date.now()
+      })
+      
+      if (updated) {
+        console.log(`📋 Baixa registrada para NF ${data.nd}: código ${data.statusCode} (${data.status})`)
+        
+        // Enviar confirmação para mobile
+        socket.emit("nf-baixa-confirmed", {
+          nd: data.nd,
+          statusCode: data.statusCode,
+          status: data.status,
+          timestamp: Date.now(),
+          success: true
+        })
+        
+        // Enviar para clientes web
+        broadcastToWebClients("nf-baixa-notification", {
+          deviceId,
+          baixaData: data,
+          timestamp: Date.now()
+        })
+        
+        console.log(`📤 Baixa da NF ${data.nd} processada e enviada para clientes web`)
+      }
+    })
+
+    // ✅ NOVO: Listener específico para baixa realizada (sinal direto do mobile para o painel)
+    socket.on("painel-baixa-realizada", (data) => {
+      console.log('🚨 ===== PAINEL-BAIXA-REALIZADA RECEBIDO =====');
+      console.log('🚨 SINAL DIRETO PARA O PAINEL:', JSON.stringify(data, null, 2));
       
       const deviceId = data.deviceId || socket.id;
       
-      // Processar baixa da NF
+      // Processar baixa imediatamente
       if (devices.has(deviceId)) {
         const device = devices.get(deviceId);
         if (!device.nfs) device.nfs = [];
@@ -477,101 +440,92 @@ app.prepare().then(() => {
             status: data.status,
             statusCode: data.statusCode,
             baixaLocation: data.location,
-            baixaTimestamp: data.timestamp || Date.now()
+            baixaTimestamp: data.timestamp || Date.now(),
+            baixaMessage: data.message
           };
-          console.log(`📋 Baixa registrada para NF ${data.nd}: código ${data.statusCode} (${data.status})`);
+          console.log(`🚨 BAIXA IMEDIATA registrada para NF ${data.nd}: ${data.message}`);
         }
       }
       
-      // Enviar confirmação de baixa para o mobile
-      const mobileSocket = io.sockets.sockets.get(socket.id);
-      if (mobileSocket) {
-        mobileSocket.emit("nf-baixa-confirmed", {
-          nd: data.nd,
-          statusCode: data.statusCode,
-          status: data.status,
-          timestamp: Date.now(),
-          success: true
-        });
-      }
-      
-      // Enviar para clientes web
+      // Enviar atualização imediata para TODOS os clientes web
       webClients.forEach(webClientId => {
         const webSocket = io.sockets.sockets.get(webClientId);
         if (webSocket) {
-          webSocket.emit("nf-baixa-notification", {
+          // Evento específico para atualização do painel
+          webSocket.emit("painel-atualizacao-imediata", {
+            type: "baixa-realizada",
             deviceId,
-            baixaData: data,
-            timestamp: Date.now()
+            nd: data.nd,
+            status: data.status,
+            statusCode: data.statusCode,
+            location: data.location,
+            message: data.message,
+            timestamp: data.timestamp,
+            deviceName: data.deviceName
           });
+          
+          // Enviar também dados atualizados completos
+          const allDevicesData = {
+            devices: Array.from(devices.entries()).map(([id, deviceData]) => ({
+              deviceId: id,
+              ...deviceData,
+              routeData: deviceRoutes.get(id) || null
+            }))
+          };
+          webSocket.emit("all-devices-data", allDevicesData);
         }
       });
       
-      console.log(`📤 Baixa da NF ${data.nd} processada e enviada para clientes web`);
+      console.log(`🚨 ATUALIZAÇÃO IMEDIATA enviada para ${webClients.size} clientes web - NF ${data.nd} baixada!`);
     })
 
     // Listener para atualizações de entrega
     socket.on("delivery-status-update", (data) => {
-      console.log('🚚 ===== DELIVERY-STATUS-UPDATE RECEBIDO =====');
-      console.log('Entrega:', JSON.stringify(data, null, 2));
+      console.log('🚚 ===== DELIVERY-STATUS-UPDATE RECEBIDO =====')
       
-      const deviceId = data.deviceId || socket.id;
+      const deviceId = data.deviceId || socket.id
       
-      // Atualizar status de entrega no dispositivo
       if (devices.has(deviceId)) {
-        const device = devices.get(deviceId);
-        if (!device.entregas) device.entregas = [];
+        const device = devices.get(deviceId)
+        if (!device.entregas) device.entregas = []
         
         // Registrar entrega
         device.entregas.push({
           nd: data.nd,
           status: data.status,
           location: data.location,
-          timestamp: data.timestamp || Date.now()
-        });
+          timestamp: data.timestamp || Date.now(),
+          source: data.source || 'mobile'
+        })
         
-        // Atualizar também o status da NF correspondente
-        if (device.nfs) {
-          const nfIndex = device.nfs.findIndex(nf => nf.nd === data.nd);
-          if (nfIndex >= 0) {
-            device.nfs[nfIndex].status = data.status;
-            device.nfs[nfIndex].deliveryLocation = data.location;
-            device.nfs[nfIndex].deliveryTimestamp = data.timestamp || Date.now();
-          }
-        }
+        // Atualizar status da NF correspondente
+        updateNFInDevice(deviceId, {
+          nd: data.nd,
+          status: data.status,
+          deliveryLocation: data.location,
+          deliveryTimestamp: data.timestamp || Date.now(),
+          deliverySource: data.source || 'mobile'
+        })
         
-        console.log(`🚚 Entrega registrada para ND ${data.nd}: ${data.status}`);
+        console.log(`🚚 Entrega registrada para ND ${data.nd}: ${data.status} (fonte: ${data.source || 'mobile'})`)
       }
       
       // Enviar para clientes web
-      webClients.forEach(webClientId => {
-        const webSocket = io.sockets.sockets.get(webClientId);
-        if (webSocket) {
-          webSocket.emit("delivery-notification", {
-            deviceId,
-            deliveryData: data,
-            timestamp: Date.now()
-          });
-        }
-      });
+      broadcastToWebClients("delivery-notification", {
+        deviceId,
+        deliveryData: data,
+        timestamp: Date.now()
+      })
       
-      console.log('📤 Notificação de entrega enviada para', webClients.size, 'clientes web');
+      console.log('📤 Notificação de entrega enviada para', webClients.size, 'clientes web')
     })
 
     // Listener para progresso da rota
     socket.on("route-progress-update", (data) => {
-      console.log('🗺️ ===== ROUTE-PROGRESS-UPDATE RECEBIDO =====');
-      console.log('Progresso:', JSON.stringify(data, null, 2));
+      console.log('🗺️ ===== ROUTE-PROGRESS-UPDATE RECEBIDO =====')
       
-      // Enviar para clientes web
-      webClients.forEach(webClientId => {
-        const webSocket = io.sockets.sockets.get(webClientId);
-        if (webSocket) {
-          webSocket.emit("route-update", data);
-        }
-      });
-      
-      console.log('📤 Progresso da rota enviado para', webClients.size, 'clientes web');
+      broadcastToWebClients("route-update", data)
+      console.log('📤 Progresso da rota enviado para', webClients.size, 'clientes web')
     })
     
     socket.on("posicao-atual", (data) => {
@@ -583,21 +537,7 @@ app.prepare().then(() => {
       
       // Inicializar aparelho se não existir
       if (!devices.has(deviceId)) {
-        const colorIndex = devices.size % deviceColors.length
-        const newDevice = {
-          positions: [],
-          origem: null,
-          destinos: [], // Array para múltiplos destinos
-          nfs: [], // Array para armazenar NFs
-          entregas: [], // Array para armazenar entregas
-          color: deviceColors[colorIndex],
-          lastUpdate: Date.now(),
-          name: data.deviceName || `Aparelho ${devices.size + 1}`
-        }
-        devices.set(deviceId, newDevice)
-        
-        // Iniciar sistema de backup para novo dispositivo
-        startBackupInterval(deviceId, newDevice)
+        createDevice(deviceId, data.deviceName || `Aparelho ${devices.size + 1}`)
       }
       
       const device = devices.get(deviceId)
